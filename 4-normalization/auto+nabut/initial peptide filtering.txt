@@ -1,0 +1,5 @@
+[1] "Peptides with no PTMs"
+[1] "GKQGGKAR"
+
+[1] "Peptidoforms with multiple precursor charge"
+[1] "H31-K4[un]" "H31-K4[me]"

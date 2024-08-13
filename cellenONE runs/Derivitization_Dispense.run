@@ -1,0 +1,2 @@
+Humidity_65	Temperature_24	Flush_PDC	TargetPosition	AntiStaticON	ScanFieldsOnly_wLights	AutoDropDetectionDropVolume	AirGapTakeProbe_30ul	Dip_into_Washstation1_Once	Wait5sec	OpenNozzleSetup	AutoDropDetection_Dropvol_NozzleSetup_400usDelay	BeginLoop	SpotProbeRun	EndLoop	AutoDropDetection_Dropvol_NozzleSetup_400usDelay	FlushWashStation1_250uL	ScanFieldsOnly_wLights	Flush_PDC	AutoDropDetectionDropVolume	MoveHome	AntiStaticOFF	Humidity_45	Temperature_50
+																							

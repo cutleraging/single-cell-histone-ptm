@@ -1,0 +1,696 @@
+---
+title: "3-calibration-curves: nabut histone standards"
+output: html_document
+editor_options: 
+  chunk_output_type: console
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Preparation
+
+## Libraries
+```{r}
+library(SummarizedExperiment)
+library(tidyr)
+library(dplyr)
+library(tibble)
+library(ggplot2)
+library(pheatmap)
+library(ggpubr)
+library(reshape2)
+```
+
+## Functions
+```{r}
+all_un <- function(str) {
+  matches <- gregexpr("\\[.*?\\]", str)
+  brackets <- regmatches(str, matches)[[1]]
+  all(grepl("\\[un\\]", brackets))
+}
+
+unmod <- function(peptide) {
+  # Split the peptide by the semicolon
+  marks <- strsplit(peptide, ";")[[1]]
+  # Check if all the modifications are [un]
+  all_un <- all(grepl("\\[un\\]", marks))
+  return(all_un)
+}
+
+single_mark <- function(peptide) {
+  # Split the peptide by the semicolon
+  marks <- strsplit(peptide, ";")[[1]]
+  # Count the number of modifications (excluding [un])
+  modification_count <- sum(!grepl("\\[[un]\\]", marks))
+  # Check if it's exactly one
+  return(modification_count == 1)
+}
+
+combination_marks <- function(peptide) {
+  # Split the peptide by the semicolon
+  marks <- strsplit(peptide, ";")[[1]]
+  # Extract all the marks within brackets that are not [un]
+  unique_marks <- unique(gregexpr("\\[[^un]\\w+\\]", peptide, perl = TRUE)[[1]])
+  # Check if there are at least 2 unique marks other than [un]
+  return(length(unique_marks) >= 2)
+}
+
+hybrid_marks <- function(peptide) {
+  ac <- grepl("\\[ac\\]", peptide)
+  me <- grepl("\\[me1\\]", peptide) |
+        grepl("\\[me2\\]", peptide) |
+        grepl("\\[me3\\]", peptide)
+  
+  return(ac && me)
+}
+
+filter_peptides <- function(df){
+  
+  # Remove peptides with "" or "NOT FOUND" peptide note (just the unmod and no modifications)
+  if(nrow(df[df$Peptide.Note == "" | df$Peptide.Note == "NOT FOUND",]) > 0){
+    print("Peptides with no PTMs")
+    print(unique(df[df$Peptide.Note == "" | df$Peptide.Note == "NOT FOUND", "Peptide.Sequence"]))
+    df.filter.1 <- df[!df$Peptide.Note == "" | !df$Peptide.Note == "NOT FOUND",]
+  } else{
+    print("All peptides have PTMs")
+    df.filter.1 <- df
+  }
+  
+  # Remove " NOT FOUND" and any other string after this from Peptide.Note
+  df.filter.1$Peptide.Note <- sub(" NOT FOUND.*", "", df.filter.1$Peptide.Note)
+  
+  # For peptides with multiple precursor charges, take the one with higher signal
+  if (nrow(df.filter.1 %>% 
+          group_by(Peptide.Note) %>% 
+          summarise(n_distinct_charges = n_distinct(Precursor.Charge)) %>% 
+          filter(n_distinct_charges > 1)) > 0) {
+            filter.2 <- df.filter.1 %>%
+              group_by(Peptide.Note) %>%
+              filter(n_distinct(Precursor.Charge) > 1) %>%
+              ungroup() %>%
+              group_by(Peptide.Note, Precursor.Charge) %>%
+              summarise(Avg.Total.Area.MS1 = mean(Total.Area.MS1, na.rm = TRUE)) %>%
+              group_by(Peptide.Note) %>%
+              filter(Avg.Total.Area.MS1 == min(Avg.Total.Area.MS1)) %>% # min as these are the ones to filter out
+              ungroup()
+            
+            df.filter.2 <- df.filter.1 %>%
+              anti_join(filter.2, by = c("Peptide.Note", "Precursor.Charge"))
+            
+            print("Peptides with multiple precursor charge")
+            print(unique(semi_join(df.filter.1, filter.2, by = c("Peptide.Note", "Precursor.Charge"))$Peptide.Note))
+            
+            } else {
+              print("All PTMs have a single precursor charge")
+              }
+  
+  return(df.filter.2)
+}
+
+# Note that this function is different than that in the normalization
+# script because it does not replace na values with 0
+load_skyline_summarized_experiment <- function(df, coldata){
+  
+  # transform
+  df.ms1 <- df %>%
+    select(Peptide.Note, Replicate.Name, Total.Area.MS1) %>%
+    spread(key = Replicate.Name, value = Total.Area.MS1)
+  row.names(df.ms1) <- df.ms1$Peptide.Note
+  df.ms1 <- df.ms1[,-1]
+  
+  df.ms2 <- df %>%
+    select(Peptide.Note, Replicate.Name, Total.Area.Fragment) %>%
+    spread(key = Replicate.Name, value = Total.Area.Fragment)
+  row.names(df.ms2) <- df.ms2$Peptide.Note
+  df.ms2 <- df.ms2[,-1]
+  
+  df.rt <- df %>%
+    select(Peptide.Note, Replicate.Name, Peptide.Retention.Time) %>%
+    spread(key = Replicate.Name, value = Peptide.Retention.Time)
+  row.names(df.rt) <- df.rt$Peptide.Note
+  df.rt <- df.rt[,-1]
+  
+  # add peptide information
+  rowData <- df %>%
+    group_by(Peptide.Note) %>%
+    summarise(Precursor.Charge = Precursor.Charge[1],
+              Peptide.Sequence = Peptide.Sequence[1], 
+              .groups = 'drop') %>%
+    as.data.frame()
+  rowData <- rowData[match(row.names(df.ms1), rowData$Peptide.Note), ]
+  
+  # filter coldata by unique run id
+    # Extract the part after the last underscore from colnames of df.ms1
+    extracted_run_id <- sapply(strsplit(colnames(df.ms1), "_", fixed = TRUE), function(x) tail(x, 1))
+    
+    # Filter colData
+    ccoldata.filter <- coldata %>%
+      filter(run_id %in% extracted_run_id)
+    
+    ccoldata.filter <- ccoldata.filter[match(extracted_run_id, ccoldata.filter$run_id),]
+    
+  
+  # create summarized exp obj
+  se <- SummarizedExperiment(assays = list(MS1 = df.ms1,
+                                           MS2 = df.ms2,
+                                           RT = df.rt),
+                             rowData = list(charge = rowData$Precursor.Charge,
+                                            sequence = rowData$Peptide.Sequence),
+                             colData = ccoldata.filter)
+  
+  return(se)
+}
+
+count_modifications <- function(peptide_names) {
+
+  # Count unmodified
+  unmod_count <- sum(grepl("\\[un\\]", peptide_names) 
+                     & !grepl("\\[me1\\]", peptide_names)
+                     & !grepl("\\[me2\\]", peptide_names)
+                     & !grepl("\\[me3\\]", peptide_names)
+                     & !grepl("\\[ac\\]", peptide_names))
+
+  # Count acetylation only
+  ac_count <- sum(grepl("\\[ac\\]", peptide_names) 
+                  & !grepl("\\[me1\\]", peptide_names)
+                  & !grepl("\\[me2\\]", peptide_names)
+                  & !grepl("\\[me3\\]", peptide_names))
+
+  # Count methylation only
+  me_count <- peptide_names[
+                grepl("\\[me1\\]", peptide_names) |
+                grepl("\\[me2\\]", peptide_names) |
+                grepl("\\[me3\\]", peptide_names)]
+  me_count <- sum(!grepl("\\[ac\\]", me_count))
+
+  # Count hybrid marks
+  hybrid_mark_count <- sum(sapply(peptide_names, hybrid_marks))
+
+  # Return results as a df
+  return(melt(data.frame(unmodifed = unmod_count,
+                       acetlyation = ac_count,
+                       methylation = me_count,
+                       hybrid = hybrid_mark_count)))
+}
+
+theme_Publication <- function(base_size=16, base_family="helvetica") {
+      library(grid)
+      library(ggthemes)
+      (theme_foundation(base_size=base_size, base_family = "")
+       + theme(plot.title = element_text(face = "bold",
+                                         size = rel(1.2), hjust = 0.5),
+               text = element_text(),
+               panel.background = element_rect(colour = NA),
+               plot.background = element_rect(colour = NA),
+               panel.border = element_rect(colour = NA),
+               axis.title = element_text(face = "bold",size = rel(1)),
+               axis.title.y = element_text(angle=90,vjust =2),
+               axis.title.x = element_text(vjust = -0.2),
+               axis.text = element_text(), 
+               axis.line = element_line(colour="black"),
+               axis.ticks = element_line(),
+               panel.grid.major = element_line(colour="#f0f0f0"),
+               panel.grid.minor = element_blank(),
+               legend.key = element_rect(colour = NA),
+               legend.position = "bottom",
+               legend.direction = "horizontal",
+               #legend.key.size= unit(0.2, "cm"),
+               legend.margin = unit(0, "cm"),
+               legend.title = element_text(face="italic"),
+               plot.margin=unit(c(10,5,5,5),"mm"),
+               strip.background=element_rect(colour="#f0f0f0",fill="#f0f0f0"),
+               strip.text = element_text(face="bold")
+          ))
+      
+}
+
+scale_fill_Publication <- function(...){
+      library(scales)
+      discrete_scale("fill","Publication",manual_pal(values = c("#386cb0","#fdb462","#7fc97f","#ef3b2c","#662506","#a6cee3","#fb9a99","#984ea3","#ffff33")), ...)
+
+}
+
+scale_colour_Publication <- function(...){
+      library(scales)
+      discrete_scale("colour","Publication",manual_pal(values = c("#386cb0","#fdb462","#7fc97f","#ef3b2c","#662506","#a6cee3","#fb9a99","#984ea3","#ffff33")), ...)
+
+}
+```
+
+## Load data
+- H1.5-K33[ac];K45[un];K51[un] *same as H1.2 unmod - means mass and RT is same as H1.2. Needs to be quantified using MS2 like epiprofile.
+```{r}
+# skyline output
+setwd("/Users/ronaldcutler/Dropbox\ (EinsteinMed)/Sidoli-lab/Projects/Single-cell-histone/Analysis/1-data/single-cell/intensities")
+
+# combine all plates
+df.combine <- read.csv("231218_Skyline_SC_export_nabut1_nabut4_hist_stand.csv", 
+               header = TRUE,
+               stringsAsFactors = TRUE,
+               na.strings = "#N/A")
+unique(df.combine$Peptide.Note)
+
+# filter peptides
+df.combine.filter <- filter_peptides(df.combine)
+unique(df.combine.filter$Peptide.Note)
+
+# col data
+setwd("/Users/ronaldcutler/Dropbox\ (EinsteinMed)/Sidoli-lab/Projects/Single-cell-histone/Analysis/1-data/single-cell")
+
+coldata <- read.csv("sample-table.csv", 
+               header = TRUE,
+               stringsAsFactors = TRUE)
+
+# combine into se object
+obj <- load_skyline_summarized_experiment(df.combine.filter, coldata)
+
+# change replicate 4 to 2 to make it easier to read
+obj$replicate <- as.character(obj$replicate)
+obj$replicate[obj$replicate == 4] <- 2
+obj$replicate <- factor(obj$replicate)
+```
+
+## Save object
+```{r}
+setwd("/Users/ronaldcutler/Dropbox\ (EinsteinMed)/Sidoli-lab/Projects/Single-cell-histone/Analysis/3-calibration-curves/nabut")
+
+saveRDS(obj, "obj.hist-stand.RDS")
+```
+
+# Data Charecterization
+
+## Types of histone PTMs detected
+```{r}
+setwd("/Users/ronaldcutler/Dropbox\ (EinsteinMed)/Sidoli-lab/Projects/Single-cell-histone/Analysis/3-calibration-curves/nabut")
+
+mods <- count_modifications(rownames(obj))
+
+mods$variable <- factor(mods$variable, levels = mods$variable)
+
+pdf("PTM_types.pdf",
+    width = 5,
+    height = 5)
+ggplot(mods, aes(x = "", y = value, fill = variable)) +
+  geom_bar(width = 1, stat = "identity") +
+  coord_polar("y", start = 0) +
+  scale_fill_brewer(palette = "Set1") + # Use a color palette
+  theme_void() +
+  theme(legend.position = "right",  # Adjust legend position
+        legend.title = element_text(size = 12),  # Adjust legend title size
+        legend.text = element_text(size = 10)) +  # Adjust legend text size
+  geom_text(aes(label = paste0(round(value / sum(value) * 100), "%")), 
+            position = position_stack(vjust = 0.5), size = 3.5) +  # Add percentage labels
+  labs(fill = "Modification Type") +
+  ggtitle("Histone PTM types") +  # Add a title
+  theme(plot.title = element_text(hjust = 0.5))  # Center the title
+dev.off()
+```
+
+## Number of samples
+```{r}
+setwd("/Users/ronaldcutler/Dropbox\ (EinsteinMed)/Sidoli-lab/Projects/Single-cell-histone/Analysis/3-calibration-curves/nabut")
+
+# by plate
+df <- as.data.frame(table(obj$replicate))
+names(df) <- c("Replicate", "Count")
+pdf("samples_per_replicate.pdf",
+    width = 5,
+    height = 5)
+ggplot(df, aes(x = Replicate, y = Count)) +
+  geom_bar(stat = "identity") +
+  coord_flip() +
+  theme_Publication() +
+  labs(title = "Number of samples per plate", x = "Auto Plate #", y = "Frequency") +
+  scale_y_continuous(labels = scales::number_format(accuracy = 1))
+dev.off()
+
+# by amount of standard
+df <- as.data.frame(table(obj$multiplier))
+names(df) <- c("Replicate", "Count")
+pdf("samples_per_standard.pdf",
+    width = 5,
+    height = 5)
+ggplot(df, aes(x = Replicate, y = Count)) +
+  geom_bar(stat = "identity") +
+  coord_flip() +
+  theme_Publication() +
+  labs(title = "Number of samples per standard", x = "Histone Standard (pg*10)", y = "Frequency")
+dev.off()
+```
+
+## Peptides detected
+
+### MS1
+```{r}
+# peptides per sample
+df <- as.data.frame(colSums(!is.na(assay(obj, "MS1"))))
+names(df) <- c("Count")
+pdf("MS1_precursors_per_sample.pdf",
+    width = 5,
+    height = 5)
+ggplot(df, aes(x = Count)) +
+  geom_histogram() +
+  theme_Publication() +
+  labs(title = "Number of peptides\ndetected per sample", x = "# Peptides", y = "Frequency")
+dev.off()
+
+# missing values
+pdf("MS1_missing_values.pdf",
+    width = 5,
+    height = 5)
+set.seed(123)
+pheatmap(assay(obj, "MS1"), 
+         annotation_col = as.data.frame(colData(obj)[,c("replicate", "multiplier")]), 
+         scale = "none", 
+         na_col = "black", 
+         show_rownames = FALSE,
+         show_colnames = FALSE,
+         cluster_rows = FALSE, 
+         cluster_cols = FALSE)
+dev.off()
+```
+
+### MS2
+```{r}
+# peptides per sample
+df <- as.data.frame(colSums(!is.na(assay(obj, "MS2"))))
+names(df) <- c("Count")
+pdf("MS2_fragments_per_sample.pdf",
+    width = 5,
+    height = 5)
+ggplot(df, aes(x = Count)) +
+  geom_histogram() +
+  theme_Publication() +
+  labs(title = "Number of peptides\ndetected per sample", x = "# Peptides", y = "Frequency")
+dev.off()
+
+# missing values
+pdf("MS2_missing_values.pdf",
+    width = 5,
+    height = 5)
+set.seed(123)
+pheatmap(assay(obj, "MS2"), 
+         annotation_col = as.data.frame(colData(obj)[,c("replicate", "multiplier")]), 
+         scale = "none", 
+         na_col = "black", 
+         show_rownames = FALSE,
+         show_colnames = FALSE,
+         cluster_rows = FALSE, 
+         cluster_cols = FALSE)
+dev.off()
+```
+
+## Intensity distribution
+
+### MS1
+```{r}
+# by replicate
+df <- assay(obj, "MS1") %>% 
+  rownames_to_column("id") %>%
+  pivot_longer(
+    cols = -id, # This keeps the 'id' column fixed
+    names_to = "variable",
+    values_to = "value") %>%
+  merge(as.data.frame(colData(obj)), by.x = "variable", by.y = "row.names")
+pdf("MS1_distribution.pdf",
+    width = 5,
+    height = 5)
+ggplot(df, aes(x = value, fill = as.factor(replicate))) +
+  geom_density(alpha = 0.5) +
+  #geom_histogram(alpha = 0.5) +
+  scale_x_log10() +
+  theme_Publication() +
+  labs(title = "", x = "MS1 intensity", y = "Density", fill = "Replicate")
+dev.off()
+
+# by histone standard amount and replicate
+df <- merge(melt(assay(obj, "MS1")), as.data.frame(colData(obj)), by.x = "variable", by.y = "row.names")
+pdf("MS1_distribution_standard.pdf",
+    width = 7,
+    height = 5)
+ggplot(df, aes(x = as.factor(multiplier), y = value, fill = as.factor(replicate))) +
+  geom_boxplot(width = 0.5, outlier.shape = NA, position = position_dodge(width = 0.6)) +
+  scale_y_log10() +
+  theme_Publication() +
+  labs(title = "", x = "Histone Standard (pg*10)", y = "MS1 intensity", fill = "Replicate")
+dev.off()
+```
+
+### MS2
+```{r}
+# by replicate
+df <- assay(obj, "MS2") %>% 
+  rownames_to_column("id") %>%
+  pivot_longer(
+    cols = -id, # This keeps the 'id' column fixed
+    names_to = "variable",
+    values_to = "value") %>%
+  merge(as.data.frame(colData(obj)), by.x = "variable", by.y = "row.names")
+pdf("MS2_distribution.pdf",
+    width = 5,
+    height = 5)
+ggplot(df, aes(x = value, fill = as.factor(replicate))) +
+  geom_density(alpha = 0.5) +
+  #geom_histogram(alpha = 0.5) +
+  scale_x_log10() +
+  theme_Publication() +
+  labs(title = "", x = "MS2 intensity", y = "Density", fill = "Replicate")
+dev.off()
+
+# by histone standard amount and replicate
+df <- merge(melt(assay(obj, "MS2")), as.data.frame(colData(obj)), by.x = "variable", by.y = "row.names")
+pdf("MS2_distribution_standard.pdf",
+    width = 7,
+    height = 5)
+ggplot(df, aes(x = as.factor(multiplier), y = value, fill = as.factor(replicate))) +
+  geom_boxplot(width = 0.5, outlier.shape = NA, position = position_dodge(width = 0.6)) +
+  scale_y_log10() +
+  theme_Publication() +
+  labs(title = "", x = "Histone Standard (pg*10)", y = "MS2 intensity", fill = "Replicate")
+dev.off()
+```
+
+## Peptide retention times
+```{r}
+df <- assay(obj, "RT") %>% 
+  rownames_to_column("id") %>%
+  pivot_longer(
+    cols = -id, # This keeps the 'id' column fixed
+    names_to = "variable",
+    values_to = "value") %>%
+  merge(as.data.frame(colData(obj)), by.x = "variable", by.y = "row.names")
+
+pdf("peptide_retention_times_standards.pdf",
+    width = 10,
+    height = 10)
+ggplot(df, aes(x = id, y = value, color = as.factor(multiplier))) +
+  geom_jitter(alpha = 0.75) +
+  theme_Publication() +
+  labs(title = "", x = "Peptide", y = "Retention time (min)") +
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1, size = 10),
+        legend.position = "bottom") +
+  scale_color_discrete(name = "Histone Standard (pg*10)")
+dev.off()
+
+pdf("peptide_retention_times_replicate.pdf",
+    width = 10,
+    height = 10)
+ggplot(df, aes(x = id, y = value, color = as.factor(replicate))) +
+  geom_jitter(alpha = 0.75) +
+  theme_Publication() +
+  labs(title = "", x = "Peptide", y = "Retention time (min)") +
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1, size = 10),
+        legend.position = "bottom") +
+  scale_color_discrete(name = "Replicate")
+dev.off()
+```
+
+# Calibration curves
+
+## MS1
+```{r}
+# all replicates
+df <- assay(obj, "MS1") %>% 
+  rownames_to_column("id") %>%
+  pivot_longer(
+    cols = -id, # This keeps the 'id' column fixed
+    names_to = "variable",
+    values_to = "value") %>%
+  merge(as.data.frame(colData(obj)), by.x = "variable", by.y = "row.names") %>%
+  filter(multiplier != 100)
+df$id <- gsub(";", " ", df$id)
+
+pdf("MS1_calibration_curve_all.pdf",
+    width = 25,
+    height = 25)
+ggplot(df, aes(x = as.numeric(multiplier), y = value, color = as.factor(replicate))) +
+  geom_point() +
+  stat_smooth(method = "lm") +
+  stat_cor() +
+  scale_y_continuous(labels = function(x) format(x, scientific = TRUE)) +
+  scale_color_discrete(name = "Replicate") +
+  guides(fill = guide_legend(override.aes = list(shape = NA))) +
+  facet_wrap(.~id, scales = "free", labeller = labeller(id = label_wrap_gen(20))) +
+  theme_Publication(base_size = 12) +
+  labs(title = "", x = "Histone Standard (pg*10)", y = "MS1 intensity") +
+  scale_x_continuous(breaks = c(0,1,2,4,8))
+dev.off()
+
+# replicate 1
+pdf("MS1_calibration_curve_replicate_1.pdf",
+    width = 25,
+    height = 25)
+ggplot(subset(df, replicate == 1), aes(x = as.numeric(multiplier), y = value)) +
+  geom_point() +
+  stat_smooth(method = "lm") +
+  stat_cor() +
+  scale_y_continuous(labels = function(x) format(x, scientific = TRUE)) +
+  scale_color_discrete(name = "Replicate") +
+  guides(fill = guide_legend(override.aes = list(shape = NA))) +
+  facet_wrap(.~id, scales = "free", labeller = labeller(id = label_wrap_gen(20))) +
+  theme_Publication(base_size = 12) +
+  labs(title = "", x = "Histone Standard (pg*10)", y = "MS1 intensity") +
+  scale_x_continuous(breaks = c(0,1,2,4,8))
+dev.off()
+
+# replicate 2
+pdf("MS1_calibration_curve_replicate_4.pdf",
+    width = 25,
+    height = 25)
+ggplot(subset(df, replicate == 2), aes(x = as.numeric(multiplier), y = value)) +
+  geom_point() +
+  stat_smooth(method = "lm") +
+  stat_cor() +
+  scale_y_continuous(labels = function(x) format(x, scientific = TRUE)) +
+  scale_color_discrete(name = "Replicate") +
+  guides(fill = guide_legend(override.aes = list(shape = NA))) +
+  facet_wrap(.~id, scales = "free", labeller = labeller(id = label_wrap_gen(20))) +
+  theme_Publication(base_size = 12) +
+  labs(title = "", x = "Histone Standard (pg*10)", y = "MS1 intensity") +
+  scale_x_continuous(breaks = c(0,1,2,4,8))
+dev.off()
+
+# distribution of R values
+df$multiplier <- as.numeric(df$multiplier)
+df.R <- df %>%
+  group_by(id, replicate) %>%
+  summarise(
+    correlation = if(sum(!is.na(value) & !is.na(multiplier) & is.finite(value) & is.finite(multiplier)) > 1) 
+                    cor.test(value, multiplier, use = "complete.obs")$estimate 
+                  else NA,
+    p_value = if(sum(!is.na(value) & !is.na(multiplier) & is.finite(value) & is.finite(multiplier)) > 1) 
+                cor.test(value, multiplier, use = "complete.obs")$p.value 
+              else NA,
+    .groups = "drop"  # Drops the grouping structure from the result
+  )
+
+pdf("MS1_calibration_curve_correlations.pdf",
+    width = 3,
+    height = 4)
+ggplot(df.R, aes(x = as.factor(replicate), y = correlation)) +
+  geom_boxplot(outlier.shape = NA) +
+  geom_jitter(aes(color = p_value), alpha = 0.75) +
+  scale_color_gradient(low = "blue", high = "red") +
+  theme_Publication() +
+  labs(x = "Replicate", y = "Pearson R", color = "p-value") +
+  theme(legend.text = element_text(size = 10))
+dev.off()
+
+# output distribution to be used for filtering downstream
+write.csv(df.R, "MS1_calibration_curve_correlations.csv", row.names = FALSE)
+```
+
+## MS2
+```{r}
+# all replicates
+df <- assay(obj, "MS2") %>% 
+  rownames_to_column("id") %>%
+  pivot_longer(
+    cols = -id, # This keeps the 'id' column fixed
+    names_to = "variable",
+    values_to = "value") %>%
+  merge(as.data.frame(colData(obj)), by.x = "variable", by.y = "row.names") %>%
+  filter(multiplier != 100)
+df$id <- gsub(";", " ", df$id)
+
+pdf("MS2_calibration_curve_all.pdf",
+    width = 25,
+    height = 25)
+ggplot(df, aes(x = as.numeric(multiplier), y = value, color = as.factor(replicate))) +
+  geom_point() +
+  stat_smooth(method = "lm") +
+  stat_cor() +
+  scale_y_continuous(labels = function(x) format(x, scientific = TRUE)) +
+  scale_color_discrete(name = "Replicate") +
+  guides(fill = guide_legend(override.aes = list(shape = NA))) +
+  facet_wrap(.~id, scales = "free", labeller = labeller(id = label_wrap_gen(20))) +
+  theme_Publication(base_size = 12) +
+  labs(title = "", x = "Histone Standard (pg*10)", y = "MS2 intensity") +
+  scale_x_continuous(breaks = c(0,1,2,4,8))
+dev.off()
+
+# replicate 1
+pdf("MS2_calibration_curve_replicate_1.pdf",
+    width = 25,
+    height = 25)
+ggplot(subset(df, replicate == 1), aes(x = as.numeric(multiplier), y = value)) +
+  geom_point() +
+  stat_smooth(method = "lm") +
+  stat_cor() +
+  scale_y_continuous(labels = function(x) format(x, scientific = TRUE)) +
+  scale_color_discrete(name = "Replicate") +
+  guides(fill = guide_legend(override.aes = list(shape = NA))) +
+  facet_wrap(.~id, scales = "free", labeller = labeller(id = label_wrap_gen(20))) +
+  theme_Publication(base_size = 12) +
+  labs(title = "", x = "Histone Standard (pg*10)", y = "MS2 intensity") +
+  scale_x_continuous(breaks = c(0,1,2,4,8))
+dev.off()
+
+# replicate 2
+pdf("MS2_calibration_curve_replicate_4.pdf",
+    width = 25,
+    height = 25)
+ggplot(subset(df, replicate == 2), aes(x = as.numeric(multiplier), y = value)) +
+  geom_point() +
+  stat_smooth(method = "lm") +
+  stat_cor() +
+  scale_y_continuous(labels = function(x) format(x, scientific = TRUE)) +
+  scale_color_discrete(name = "Replicate") +
+  guides(fill = guide_legend(override.aes = list(shape = NA))) +
+  facet_wrap(.~id, scales = "free", labeller = labeller(id = label_wrap_gen(20))) +
+  theme_Publication(base_size = 12) +
+  labs(title = "", x = "Histone Standard (pg*10)", y = "MS2 intensity") +
+  scale_x_continuous(breaks = c(0,1,2,4,8))
+dev.off()
+
+# distribution of R values
+df$multiplier <- as.numeric(df$multiplier)
+df.R <- df %>%
+  group_by(id, replicate) %>%
+  summarise(
+    correlation = if(sum(!is.na(value) & !is.na(multiplier) & is.finite(value) & is.finite(multiplier)) > 1) 
+                    cor.test(value, multiplier, use = "complete.obs")$estimate 
+                  else NA,
+    p_value = if(sum(!is.na(value) & !is.na(multiplier) & is.finite(value) & is.finite(multiplier)) > 1) 
+                cor.test(value, multiplier, use = "complete.obs")$p.value 
+              else NA,
+    .groups = "drop"  # Drops the grouping structure from the result
+  )
+
+pdf("MS2_calibration_curve_correlations.pdf",
+    width = 3,
+    height = 4)
+ggplot(df.R, aes(x = as.factor(replicate), y = correlation)) +
+  geom_boxplot(outlier.shape = NA) +
+  geom_jitter(aes(color = p_value), alpha = 0.75) +
+  scale_color_gradient(low = "blue", high = "red") +
+  theme_Publication() +
+  labs(x = "Replicate", y = "Pearson R", color = "p-value") +
+  theme(legend.text = element_text(size = 10))
+dev.off()
+
+# output distribution to be used for filtering downstream
+write.csv(df.R, "MS2_calibration_curve_correlations.csv", row.names = FALSE)
+```

@@ -1,0 +1,2 @@
+Humidity_65	Temperature_24	TargetPosition	AntiStaticON	ScanFieldsOnly_wLights	AutoDropDetectionDropVolume	TakeProbe_15ul	Wait5sec	Dip_into_Washstation1_Once	Wait5sec	OpenNozzleSetup	AutoDropDetectionDropVolume	BeginLoop	SpotProbeRun	EndLoop	AutoDropDetectionDropVolume	Flush_PDC	AutoDropDetectionDropVolume	ScanFieldsOnly_wLights	MoveHome	AntiStaticOFF
+																				

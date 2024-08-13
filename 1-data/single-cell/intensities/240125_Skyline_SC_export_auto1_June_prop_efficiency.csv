@@ -1,0 +1,209 @@
+Replicate Name,Protein Name,Peptide Sequence,Peptide Note,Precursor Charge,Peptide Retention Time,Total Area Fragment,Total Area MS1
+D4_Slot1-1_1_1300,sp|P68431|H31_HUMAN,KQLATKAAR,2nd round underprop (ArgC),2,12.83,14151,35564
+E4_Slot1-1_1_1301,sp|P68431|H31_HUMAN,KQLATKAAR,2nd round underprop (ArgC),2,12.87,5580,14448
+F4_Slot1-1_1_1302,sp|P68431|H31_HUMAN,KQLATKAAR,2nd round underprop (ArgC),2,12.87,3556,10293
+G4_Slot1-1_1_1305,sp|P68431|H31_HUMAN,KQLATKAAR,2nd round underprop (ArgC),2,12.89,3681,10119
+H4_Slot1-1_1_1306,sp|P68431|H31_HUMAN,KQLATKAAR,2nd round underprop (ArgC),2,12.87,2857,9821
+I4_Slot1-1_1_1307,sp|P68431|H31_HUMAN,KQLATKAAR,2nd round underprop (ArgC),2,12.84,3785,11069
+2_J4_Slot1-1_1_1309,sp|P68431|H31_HUMAN,KQLATKAAR,2nd round underprop (ArgC),2,12.88,4496,15472
+2_K4_Slot1-1_1_1310,sp|P68431|H31_HUMAN,KQLATKAAR,2nd round underprop (ArgC),2,12.9,4553,14315
+4_L4_Slot1-1_1_1312,sp|P68431|H31_HUMAN,KQLATKAAR,2nd round underprop (ArgC),2,12.92,17270,41038
+4_M4_Slot1-1_1_1313,sp|P68431|H31_HUMAN,KQLATKAAR,2nd round underprop (ArgC),2,12.9,7322,21229
+8_N4_Slot1-1_1_1315,sp|P68431|H31_HUMAN,KQLATKAAR,2nd round underprop (ArgC),2,12.85,16574,40110
+8_O4_Slot1-1_1_1316,sp|P68431|H31_HUMAN,KQLATKAAR,2nd round underprop (ArgC),2,12.85,16799,44258
+100_C4_Slot1-1_1_1298,sp|P68431|H31_HUMAN,KQLATKAAR,2nd round underprop (ArgC),2,12.8,30865,61272
+1_hist_stndrd_D5_Slot1-1_1_1281,sp|P68431|H31_HUMAN,KQLATKAAR,2nd round underprop (ArgC),2,12.92,4137,8772
+1_hist_stndrd_E5_Slot1-1_1_1282,sp|P68431|H31_HUMAN,KQLATKAAR,2nd round underprop (ArgC),2,12.88,2267,6560
+1_hist_stndrd_F5_Slot1-1_1_1283,sp|P68431|H31_HUMAN,KQLATKAAR,2nd round underprop (ArgC),2,12.83,2900,5342
+1_hist_stndrd_G5_Slot1-1_1_1285,sp|P68431|H31_HUMAN,KQLATKAAR,2nd round underprop (ArgC),2,12.8,3361,7957
+1_hist_stndrd_H5_Slot1-1_1_1286,sp|P68431|H31_HUMAN,KQLATKAAR,2nd round underprop (ArgC),2,12.84,2687,9872
+1_hist_stndrd_I5_Slot1-1_1_1287,sp|P68431|H31_HUMAN,KQLATKAAR,2nd round underprop (ArgC),2,12.77,2327,7872
+2_hist_stndrd_J5_Slot1-1_1_1289,sp|P68431|H31_HUMAN,KQLATKAAR,2nd round underprop (ArgC),2,12.82,6180,14405
+2_hist_stndrd_K5_Slot1-1_1_1290,sp|P68431|H31_HUMAN,KQLATKAAR,2nd round underprop (ArgC),2,12.8,9870,25961
+4_hist_stndrd_L5_Slot1-1_1_1292,sp|P68431|H31_HUMAN,KQLATKAAR,2nd round underprop (ArgC),2,12.82,9861,30898
+4_hist_stndrd_M5_Slot1-1_1_1293,sp|P68431|H31_HUMAN,KQLATKAAR,2nd round underprop (ArgC),2,12.81,7512,22761
+8_hist_stndrd_N5_Slot1-1_1_1295,sp|P68431|H31_HUMAN,KQLATKAAR,2nd round underprop (ArgC),2,12.83,76407,171160
+8_hist_stndrd_O5_Slot1-1_1_1296,sp|P68431|H31_HUMAN,KQLATKAAR,2nd round underprop (ArgC),2,12.83,88692,208075
+100_hist_stndrd_C5_Slot1-1_1_1279,sp|P68431|H31_HUMAN,KQLATKAAR,2nd round underprop (ArgC),2,13.18,19139,42837
+D4_Slot1-1_1_1300,sp|P68431|H31_HUMAN,KQLATKAAR,Full prop (ArgC),2,23.88,61745,138598
+E4_Slot1-1_1_1301,sp|P68431|H31_HUMAN,KQLATKAAR,Full prop (ArgC),2,23.85,38778,69773
+F4_Slot1-1_1_1302,sp|P68431|H31_HUMAN,KQLATKAAR,Full prop (ArgC),2,23.9,32844,62794
+G4_Slot1-1_1_1305,sp|P68431|H31_HUMAN,KQLATKAAR,Full prop (ArgC),2,23.88,32839,60159
+H4_Slot1-1_1_1306,sp|P68431|H31_HUMAN,KQLATKAAR,Full prop (ArgC),2,23.9,26769,45426
+I4_Slot1-1_1_1307,sp|P68431|H31_HUMAN,KQLATKAAR,Full prop (ArgC),2,23.9,68408,142452
+2_J4_Slot1-1_1_1309,sp|P68431|H31_HUMAN,KQLATKAAR,Full prop (ArgC),2,23.94,225861,435887
+2_K4_Slot1-1_1_1310,sp|P68431|H31_HUMAN,KQLATKAAR,Full prop (ArgC),2,23.91,183472,369586
+4_L4_Slot1-1_1_1312,sp|P68431|H31_HUMAN,KQLATKAAR,Full prop (ArgC),2,23.93,348521,733125
+4_M4_Slot1-1_1_1313,sp|P68431|H31_HUMAN,KQLATKAAR,Full prop (ArgC),2,23.93,500617,931368
+8_N4_Slot1-1_1_1315,sp|P68431|H31_HUMAN,KQLATKAAR,Full prop (ArgC),2,23.92,1138773,2312013
+8_O4_Slot1-1_1_1316,sp|P68431|H31_HUMAN,KQLATKAAR,Full prop (ArgC),2,23.9,937450,1941666
+100_C4_Slot1-1_1_1298,sp|P68431|H31_HUMAN,KQLATKAAR,Full prop (ArgC),2,23.81,4112081,9272882
+1_hist_stndrd_D5_Slot1-1_1_1281,sp|P68431|H31_HUMAN,KQLATKAAR,Full prop (ArgC),2,23.9,311160,679848
+1_hist_stndrd_E5_Slot1-1_1_1282,sp|P68431|H31_HUMAN,KQLATKAAR,Full prop (ArgC),2,23.88,266115,560983
+1_hist_stndrd_F5_Slot1-1_1_1283,sp|P68431|H31_HUMAN,KQLATKAAR,Full prop (ArgC),2,23.88,266668,559205
+1_hist_stndrd_G5_Slot1-1_1_1285,sp|P68431|H31_HUMAN,KQLATKAAR,Full prop (ArgC),2,23.78,229053,515415
+1_hist_stndrd_H5_Slot1-1_1_1286,sp|P68431|H31_HUMAN,KQLATKAAR,Full prop (ArgC),2,23.83,281923,652459
+1_hist_stndrd_I5_Slot1-1_1_1287,sp|P68431|H31_HUMAN,KQLATKAAR,Full prop (ArgC),2,23.83,228731,498374
+2_hist_stndrd_J5_Slot1-1_1_1289,sp|P68431|H31_HUMAN,KQLATKAAR,Full prop (ArgC),2,23.83,551449,1189667
+2_hist_stndrd_K5_Slot1-1_1_1290,sp|P68431|H31_HUMAN,KQLATKAAR,Full prop (ArgC),2,23.83,652488,1377995
+4_hist_stndrd_L5_Slot1-1_1_1292,sp|P68431|H31_HUMAN,KQLATKAAR,Full prop (ArgC),2,23.81,1380469,3040298
+4_hist_stndrd_M5_Slot1-1_1_1293,sp|P68431|H31_HUMAN,KQLATKAAR,Full prop (ArgC),2,23.87,1280561,2844598
+8_hist_stndrd_N5_Slot1-1_1_1295,sp|P68431|H31_HUMAN,KQLATKAAR,Full prop (ArgC),2,23.86,2657801,5872289
+8_hist_stndrd_O5_Slot1-1_1_1296,sp|P68431|H31_HUMAN,KQLATKAAR,Full prop (ArgC),2,23.86,2548437,5666044
+100_hist_stndrd_C5_Slot1-1_1_1279,sp|P68431|H31_HUMAN,KQLATKAAR,Full prop (ArgC),2,24.17,5898726,13571544
+D4_Slot1-1_1_1300,sp|P68431|H31_HUMAN,KQLATKAAR,Overprop on T (ArgC),2,27.61,32399,66922
+E4_Slot1-1_1_1301,sp|P68431|H31_HUMAN,KQLATKAAR,Overprop on T (ArgC),2,27.58,22967,47893
+F4_Slot1-1_1_1302,sp|P68431|H31_HUMAN,KQLATKAAR,Overprop on T (ArgC),2,27.58,29024,49446
+G4_Slot1-1_1_1305,sp|P68431|H31_HUMAN,KQLATKAAR,Overprop on T (ArgC),2,27.63,26108,54724
+H4_Slot1-1_1_1306,sp|P68431|H31_HUMAN,KQLATKAAR,Overprop on T (ArgC),2,27.61,23924,54153
+I4_Slot1-1_1_1307,sp|P68431|H31_HUMAN,KQLATKAAR,Overprop on T (ArgC),2,27.61,46061,94447
+2_J4_Slot1-1_1_1309,sp|P68431|H31_HUMAN,KQLATKAAR,Overprop on T (ArgC),2,27.68,50892,108424
+2_K4_Slot1-1_1_1310,sp|P68431|H31_HUMAN,KQLATKAAR,Overprop on T (ArgC),2,27.64,54572,122894
+4_L4_Slot1-1_1_1312,sp|P68431|H31_HUMAN,KQLATKAAR,Overprop on T (ArgC),2,27.65,101549,220147
+4_M4_Slot1-1_1_1313,sp|P68431|H31_HUMAN,KQLATKAAR,Overprop on T (ArgC),2,27.66,110795,247125
+8_N4_Slot1-1_1_1315,sp|P68431|H31_HUMAN,KQLATKAAR,Overprop on T (ArgC),2,27.65,233858,493433
+8_O4_Slot1-1_1_1316,sp|P68431|H31_HUMAN,KQLATKAAR,Overprop on T (ArgC),2,27.63,199742,426960
+100_C4_Slot1-1_1_1298,sp|P68431|H31_HUMAN,KQLATKAAR,Overprop on T (ArgC),2,26.3,170329,408833
+1_hist_stndrd_D5_Slot1-1_1_1281,sp|P68431|H31_HUMAN,KQLATKAAR,Overprop on T (ArgC),2,27.63,55344,107406
+1_hist_stndrd_E5_Slot1-1_1_1282,sp|P68431|H31_HUMAN,KQLATKAAR,Overprop on T (ArgC),2,27.56,48425,99436
+1_hist_stndrd_F5_Slot1-1_1_1283,sp|P68431|H31_HUMAN,KQLATKAAR,Overprop on T (ArgC),2,27.58,50196,99998
+1_hist_stndrd_G5_Slot1-1_1_1285,sp|P68431|H31_HUMAN,KQLATKAAR,Overprop on T (ArgC),2,27.49,50342,101583
+1_hist_stndrd_H5_Slot1-1_1_1286,sp|P68431|H31_HUMAN,KQLATKAAR,Overprop on T (ArgC),2,27.56,54845,108275
+1_hist_stndrd_I5_Slot1-1_1_1287,sp|P68431|H31_HUMAN,KQLATKAAR,Overprop on T (ArgC),2,27.53,48754,95067
+2_hist_stndrd_J5_Slot1-1_1_1289,sp|P68431|H31_HUMAN,KQLATKAAR,Overprop on T (ArgC),2,27.53,88952,187347
+2_hist_stndrd_K5_Slot1-1_1_1290,sp|P68431|H31_HUMAN,KQLATKAAR,Overprop on T (ArgC),2,27.54,103975,206230
+4_hist_stndrd_L5_Slot1-1_1_1292,sp|P68431|H31_HUMAN,KQLATKAAR,Overprop on T (ArgC),2,27.54,206292,437034
+4_hist_stndrd_M5_Slot1-1_1_1293,sp|P68431|H31_HUMAN,KQLATKAAR,Overprop on T (ArgC),2,27.58,208979,451496
+8_hist_stndrd_N5_Slot1-1_1_1295,sp|P68431|H31_HUMAN,KQLATKAAR,Overprop on T (ArgC),2,27.56,464050,946285
+8_hist_stndrd_O5_Slot1-1_1_1296,sp|P68431|H31_HUMAN,KQLATKAAR,Overprop on T (ArgC),2,27.58,418684,891907
+100_hist_stndrd_C5_Slot1-1_1_1279,sp|P68431|H31_HUMAN,KQLATKAAR,Overprop on T (ArgC),2,27.9,2484820,4903239
+D4_Slot1-1_1_1300,sp|P68431|H31_HUMAN,KQLATKAAR,No prop (tryptic with 2 MC) (NOT FOUND),2,10.45,11268,3978
+E4_Slot1-1_1_1301,sp|P68431|H31_HUMAN,KQLATKAAR,No prop (tryptic with 2 MC) (NOT FOUND),2,10.45,7878,2863
+F4_Slot1-1_1_1302,sp|P68431|H31_HUMAN,KQLATKAAR,No prop (tryptic with 2 MC) (NOT FOUND),2,10.48,7544,4258
+G4_Slot1-1_1_1305,sp|P68431|H31_HUMAN,KQLATKAAR,No prop (tryptic with 2 MC) (NOT FOUND),2,10.48,8683,11964
+H4_Slot1-1_1_1306,sp|P68431|H31_HUMAN,KQLATKAAR,No prop (tryptic with 2 MC) (NOT FOUND),2,10.43,6520,8280
+I4_Slot1-1_1_1307,sp|P68431|H31_HUMAN,KQLATKAAR,No prop (tryptic with 2 MC) (NOT FOUND),2,10.43,14176,11142
+2_J4_Slot1-1_1_1309,sp|P68431|H31_HUMAN,KQLATKAAR,No prop (tryptic with 2 MC) (NOT FOUND),2,10.45,17268,5502
+2_K4_Slot1-1_1_1310,sp|P68431|H31_HUMAN,KQLATKAAR,No prop (tryptic with 2 MC) (NOT FOUND),2,10.43,18857,2459
+4_L4_Slot1-1_1_1312,sp|P68431|H31_HUMAN,KQLATKAAR,No prop (tryptic with 2 MC) (NOT FOUND),2,10.45,31442,4006
+4_M4_Slot1-1_1_1313,sp|P68431|H31_HUMAN,KQLATKAAR,No prop (tryptic with 2 MC) (NOT FOUND),2,10.48,35908,4504
+8_N4_Slot1-1_1_1315,sp|P68431|H31_HUMAN,KQLATKAAR,No prop (tryptic with 2 MC) (NOT FOUND),2,10.4,70496,9837
+8_O4_Slot1-1_1_1316,sp|P68431|H31_HUMAN,KQLATKAAR,No prop (tryptic with 2 MC) (NOT FOUND),2,10.45,57864,3347
+100_C4_Slot1-1_1_1298,sp|P68431|H31_HUMAN,KQLATKAAR,No prop (tryptic with 2 MC) (NOT FOUND),2,10.4,176190,12084
+1_hist_stndrd_D5_Slot1-1_1_1281,sp|P68431|H31_HUMAN,KQLATKAAR,No prop (tryptic with 2 MC) (NOT FOUND),2,10.5,23515,2480
+1_hist_stndrd_E5_Slot1-1_1_1282,sp|P68431|H31_HUMAN,KQLATKAAR,No prop (tryptic with 2 MC) (NOT FOUND),2,30.49,27975,10000
+1_hist_stndrd_F5_Slot1-1_1_1283,sp|P68431|H31_HUMAN,KQLATKAAR,No prop (tryptic with 2 MC) (NOT FOUND),2,10.43,22630,1301
+1_hist_stndrd_G5_Slot1-1_1_1285,sp|P68431|H31_HUMAN,KQLATKAAR,No prop (tryptic with 2 MC) (NOT FOUND),2,30.42,25932,6592
+1_hist_stndrd_H5_Slot1-1_1_1286,sp|P68431|H31_HUMAN,KQLATKAAR,No prop (tryptic with 2 MC) (NOT FOUND),2,10.4,23676,2517
+1_hist_stndrd_I5_Slot1-1_1_1287,sp|P68431|H31_HUMAN,KQLATKAAR,No prop (tryptic with 2 MC) (NOT FOUND),2,10.38,23613,1177
+2_hist_stndrd_J5_Slot1-1_1_1289,sp|P68431|H31_HUMAN,KQLATKAAR,No prop (tryptic with 2 MC) (NOT FOUND),2,10.43,43051,6283
+2_hist_stndrd_K5_Slot1-1_1_1290,sp|P68431|H31_HUMAN,KQLATKAAR,No prop (tryptic with 2 MC) (NOT FOUND),2,10.4,45876,4265
+4_hist_stndrd_L5_Slot1-1_1_1292,sp|P68431|H31_HUMAN,KQLATKAAR,No prop (tryptic with 2 MC) (NOT FOUND),2,10.43,77514,1832
+4_hist_stndrd_M5_Slot1-1_1_1293,sp|P68431|H31_HUMAN,KQLATKAAR,No prop (tryptic with 2 MC) (NOT FOUND),2,10.43,77856,1408
+8_hist_stndrd_N5_Slot1-1_1_1295,sp|P68431|H31_HUMAN,KQLATKAAR,No prop (tryptic with 2 MC) (NOT FOUND),2,10.43,150106,20672
+8_hist_stndrd_O5_Slot1-1_1_1296,sp|P68431|H31_HUMAN,KQLATKAAR,No prop (tryptic with 2 MC) (NOT FOUND),2,10.43,136784,5657
+100_hist_stndrd_C5_Slot1-1_1_1279,sp|P68431|H31_HUMAN,KQLATKAAR,No prop (tryptic with 2 MC) (NOT FOUND),2,10.62,394210,2708
+D4_Slot1-1_1_1300,sp|P68431|H31_HUMAN,QLATKAAR,1st round underprop (tryptic with 1 MC),2,10.45,50469,210811
+E4_Slot1-1_1_1301,sp|P68431|H31_HUMAN,QLATKAAR,1st round underprop (tryptic with 1 MC),2,10.45,39836,173497
+F4_Slot1-1_1_1302,sp|P68431|H31_HUMAN,QLATKAAR,1st round underprop (tryptic with 1 MC),2,10.45,38380,177795
+G4_Slot1-1_1_1305,sp|P68431|H31_HUMAN,QLATKAAR,1st round underprop (tryptic with 1 MC),2,10.45,36851,164992
+H4_Slot1-1_1_1306,sp|P68431|H31_HUMAN,QLATKAAR,1st round underprop (tryptic with 1 MC),2,10.43,39704,173339
+I4_Slot1-1_1_1307,sp|P68431|H31_HUMAN,QLATKAAR,1st round underprop (tryptic with 1 MC),2,10.43,72425,319257
+2_J4_Slot1-1_1_1309,sp|P68431|H31_HUMAN,QLATKAAR,1st round underprop (tryptic with 1 MC),2,10.45,80201,353014
+2_K4_Slot1-1_1_1310,sp|P68431|H31_HUMAN,QLATKAAR,1st round underprop (tryptic with 1 MC),2,10.46,93320,427297
+4_L4_Slot1-1_1_1312,sp|P68431|H31_HUMAN,QLATKAAR,1st round underprop (tryptic with 1 MC),2,10.45,162708,728333
+4_M4_Slot1-1_1_1313,sp|P68431|H31_HUMAN,QLATKAAR,1st round underprop (tryptic with 1 MC),2,10.48,186307,792927
+8_N4_Slot1-1_1_1315,sp|P68431|H31_HUMAN,QLATKAAR,1st round underprop (tryptic with 1 MC),2,10.43,347877,1512169
+8_O4_Slot1-1_1_1316,sp|P68431|H31_HUMAN,QLATKAAR,1st round underprop (tryptic with 1 MC),2,10.45,307678,1296816
+100_C4_Slot1-1_1_1298,sp|P68431|H31_HUMAN,QLATKAAR,1st round underprop (tryptic with 1 MC),2,10.4,947476,3721572
+1_hist_stndrd_D5_Slot1-1_1_1281,sp|P68431|H31_HUMAN,QLATKAAR,1st round underprop (tryptic with 1 MC),2,10.48,109212,505901
+1_hist_stndrd_E5_Slot1-1_1_1282,sp|P68431|H31_HUMAN,QLATKAAR,1st round underprop (tryptic with 1 MC),2,10.45,128272,538196
+1_hist_stndrd_F5_Slot1-1_1_1283,sp|P68431|H31_HUMAN,QLATKAAR,1st round underprop (tryptic with 1 MC),2,10.43,126359,554254
+1_hist_stndrd_G5_Slot1-1_1_1285,sp|P68431|H31_HUMAN,QLATKAAR,1st round underprop (tryptic with 1 MC),2,10.4,118380,506673
+1_hist_stndrd_H5_Slot1-1_1_1286,sp|P68431|H31_HUMAN,QLATKAAR,1st round underprop (tryptic with 1 MC),2,10.4,114021,495883
+1_hist_stndrd_I5_Slot1-1_1_1287,sp|P68431|H31_HUMAN,QLATKAAR,1st round underprop (tryptic with 1 MC),2,10.38,119386,547613
+2_hist_stndrd_J5_Slot1-1_1_1289,sp|P68431|H31_HUMAN,QLATKAAR,1st round underprop (tryptic with 1 MC),2,10.43,225582,963671
+2_hist_stndrd_K5_Slot1-1_1_1290,sp|P68431|H31_HUMAN,QLATKAAR,1st round underprop (tryptic with 1 MC),2,10.4,230434,959252
+4_hist_stndrd_L5_Slot1-1_1_1292,sp|P68431|H31_HUMAN,QLATKAAR,1st round underprop (tryptic with 1 MC),2,10.41,407708,1637570
+4_hist_stndrd_M5_Slot1-1_1_1293,sp|P68431|H31_HUMAN,QLATKAAR,1st round underprop (tryptic with 1 MC),2,10.43,406101,1690205
+8_hist_stndrd_N5_Slot1-1_1_1295,sp|P68431|H31_HUMAN,QLATKAAR,1st round underprop (tryptic with 1 MC),2,10.43,794770,2928608
+8_hist_stndrd_O5_Slot1-1_1_1296,sp|P68431|H31_HUMAN,QLATKAAR,1st round underprop (tryptic with 1 MC),2,10.43,755954,2949264
+100_hist_stndrd_C5_Slot1-1_1_1279,sp|P68431|H31_HUMAN,QLATKAAR,1st round underprop (tryptic with 1 MC),2,10.62,2367086,7802564
+D4_Slot1-1_1_1300,sp|P68431|H31_HUMAN,QLATKAAR,No prop (tryptic with 1 MC) (NOT FOUND),2,5.39,6787,17096
+E4_Slot1-1_1_1301,sp|P68431|H31_HUMAN,QLATKAAR,No prop (tryptic with 1 MC) (NOT FOUND),2,5.39,4140,8191
+F4_Slot1-1_1_1302,sp|P68431|H31_HUMAN,QLATKAAR,No prop (tryptic with 1 MC) (NOT FOUND),2,5.42,2827,5726
+G4_Slot1-1_1_1305,sp|P68431|H31_HUMAN,QLATKAAR,No prop (tryptic with 1 MC) (NOT FOUND),2,5.39,3666,6450
+H4_Slot1-1_1_1306,sp|P68431|H31_HUMAN,QLATKAAR,No prop (tryptic with 1 MC) (NOT FOUND),2,5.39,2587,6504
+I4_Slot1-1_1_1307,sp|P68431|H31_HUMAN,QLATKAAR,No prop (tryptic with 1 MC) (NOT FOUND),2,5.39,5241,7200
+2_J4_Slot1-1_1_1309,sp|P68431|H31_HUMAN,QLATKAAR,No prop (tryptic with 1 MC) (NOT FOUND),2,5.39,4334,6215
+2_K4_Slot1-1_1_1310,sp|P68431|H31_HUMAN,QLATKAAR,No prop (tryptic with 1 MC) (NOT FOUND),2,5.4,3376,11451
+4_L4_Slot1-1_1_1312,sp|P68431|H31_HUMAN,QLATKAAR,No prop (tryptic with 1 MC) (NOT FOUND),2,5.39,3767,12167
+4_M4_Slot1-1_1_1313,sp|P68431|H31_HUMAN,QLATKAAR,No prop (tryptic with 1 MC) (NOT FOUND),2,5.37,5058,9874
+8_N4_Slot1-1_1_1315,sp|P68431|H31_HUMAN,QLATKAAR,No prop (tryptic with 1 MC) (NOT FOUND),2,5.37,7316,19562
+8_O4_Slot1-1_1_1316,sp|P68431|H31_HUMAN,QLATKAAR,No prop (tryptic with 1 MC) (NOT FOUND),2,5.37,12109,12992
+100_C4_Slot1-1_1_1298,sp|P68431|H31_HUMAN,QLATKAAR,No prop (tryptic with 1 MC) (NOT FOUND),2,5.39,15636,33405
+1_hist_stndrd_D5_Slot1-1_1_1281,sp|P68431|H31_HUMAN,QLATKAAR,No prop (tryptic with 1 MC) (NOT FOUND),2,5.39,14777,28275
+1_hist_stndrd_E5_Slot1-1_1_1282,sp|P68431|H31_HUMAN,QLATKAAR,No prop (tryptic with 1 MC) (NOT FOUND),2,5.39,11136,29505
+1_hist_stndrd_F5_Slot1-1_1_1283,sp|P68431|H31_HUMAN,QLATKAAR,No prop (tryptic with 1 MC) (NOT FOUND),2,5.39,9874,28430
+1_hist_stndrd_G5_Slot1-1_1_1285,sp|P68431|H31_HUMAN,QLATKAAR,No prop (tryptic with 1 MC) (NOT FOUND),2,5.39,14930,29988
+1_hist_stndrd_H5_Slot1-1_1_1286,sp|P68431|H31_HUMAN,QLATKAAR,No prop (tryptic with 1 MC) (NOT FOUND),2,5.41,11265,21408
+1_hist_stndrd_I5_Slot1-1_1_1287,sp|P68431|H31_HUMAN,QLATKAAR,No prop (tryptic with 1 MC) (NOT FOUND),2,5.39,16487,29519
+2_hist_stndrd_J5_Slot1-1_1_1289,sp|P68431|H31_HUMAN,QLATKAAR,No prop (tryptic with 1 MC) (NOT FOUND),2,5.39,16115,22461
+2_hist_stndrd_K5_Slot1-1_1_1290,sp|P68431|H31_HUMAN,QLATKAAR,No prop (tryptic with 1 MC) (NOT FOUND),2,5.39,10624,26736
+4_hist_stndrd_L5_Slot1-1_1_1292,sp|P68431|H31_HUMAN,QLATKAAR,No prop (tryptic with 1 MC) (NOT FOUND),2,5.39,16205,27414
+4_hist_stndrd_M5_Slot1-1_1_1293,sp|P68431|H31_HUMAN,QLATKAAR,No prop (tryptic with 1 MC) (NOT FOUND),2,5.39,10751,22902
+8_hist_stndrd_N5_Slot1-1_1_1295,sp|P68431|H31_HUMAN,QLATKAAR,No prop (tryptic with 1 MC) (NOT FOUND),2,5.39,40547,32743
+8_hist_stndrd_O5_Slot1-1_1_1296,sp|P68431|H31_HUMAN,QLATKAAR,No prop (tryptic with 1 MC) (NOT FOUND),2,5.37,11482,39039
+100_hist_stndrd_C5_Slot1-1_1_1279,sp|P68431|H31_HUMAN,QLATKAAR,No prop (tryptic with 1 MC) (NOT FOUND),2,5.44,11429,18676
+D4_Slot1-1_1_1300,sp|P68431|H31_HUMAN,QLATK,No prop (fully tryptic) (NOT FOUND),1,4.34,0,1445
+E4_Slot1-1_1_1301,sp|P68431|H31_HUMAN,QLATK,No prop (fully tryptic) (NOT FOUND),1,4.4,17,1295
+F4_Slot1-1_1_1302,sp|P68431|H31_HUMAN,QLATK,No prop (fully tryptic) (NOT FOUND),1,4.28,77,1765
+G4_Slot1-1_1_1305,sp|P68431|H31_HUMAN,QLATK,No prop (fully tryptic) (NOT FOUND),1,4.3,69,2222
+H4_Slot1-1_1_1306,sp|P68431|H31_HUMAN,QLATK,No prop (fully tryptic) (NOT FOUND),1,4.33,112,1487
+I4_Slot1-1_1_1307,sp|P68431|H31_HUMAN,QLATK,No prop (fully tryptic) (NOT FOUND),1,4.4,0,1341
+2_J4_Slot1-1_1_1309,sp|P68431|H31_HUMAN,QLATK,No prop (fully tryptic) (NOT FOUND),1,4.41,0,1003
+2_K4_Slot1-1_1_1310,sp|P68431|H31_HUMAN,QLATK,No prop (fully tryptic) (NOT FOUND),1,4.26,0,1131
+4_L4_Slot1-1_1_1312,sp|P68431|H31_HUMAN,QLATK,No prop (fully tryptic) (NOT FOUND),1,4.28,39,1100
+4_M4_Slot1-1_1_1313,sp|P68431|H31_HUMAN,QLATK,No prop (fully tryptic) (NOT FOUND),1,4.41,0,1725
+8_N4_Slot1-1_1_1315,sp|P68431|H31_HUMAN,QLATK,No prop (fully tryptic) (NOT FOUND),1,4.36,0,902
+8_O4_Slot1-1_1_1316,sp|P68431|H31_HUMAN,QLATK,No prop (fully tryptic) (NOT FOUND),1,4.38,78,1143
+100_C4_Slot1-1_1_1298,sp|P68431|H31_HUMAN,QLATK,No prop (fully tryptic) (NOT FOUND),1,4.09,9,1264
+1_hist_stndrd_D5_Slot1-1_1_1281,sp|P68431|H31_HUMAN,QLATK,No prop (fully tryptic) (NOT FOUND),1,5.27,86,7388
+1_hist_stndrd_E5_Slot1-1_1_1282,sp|P68431|H31_HUMAN,QLATK,No prop (fully tryptic) (NOT FOUND),1,4.26,389,14419
+1_hist_stndrd_F5_Slot1-1_1_1283,sp|P68431|H31_HUMAN,QLATK,No prop (fully tryptic) (NOT FOUND),1,4.92,344,10216
+1_hist_stndrd_G5_Slot1-1_1_1285,sp|P68431|H31_HUMAN,QLATK,No prop (fully tryptic) (NOT FOUND),1,5.2,299,9910
+1_hist_stndrd_H5_Slot1-1_1_1286,sp|P68431|H31_HUMAN,QLATK,No prop (fully tryptic) (NOT FOUND),1,5.27,157,6823
+1_hist_stndrd_I5_Slot1-1_1_1287,sp|P68431|H31_HUMAN,QLATK,No prop (fully tryptic) (NOT FOUND),1,5.15,142,7751
+2_hist_stndrd_J5_Slot1-1_1_1289,sp|P68431|H31_HUMAN,QLATK,No prop (fully tryptic) (NOT FOUND),1,4.98,389,7276
+2_hist_stndrd_K5_Slot1-1_1_1290,sp|P68431|H31_HUMAN,QLATK,No prop (fully tryptic) (NOT FOUND),1,4.88,352,7173
+4_hist_stndrd_L5_Slot1-1_1_1292,sp|P68431|H31_HUMAN,QLATK,No prop (fully tryptic) (NOT FOUND),1,5.13,277,10179
+4_hist_stndrd_M5_Slot1-1_1_1293,sp|P68431|H31_HUMAN,QLATK,No prop (fully tryptic) (NOT FOUND),1,5.21,273,6342
+8_hist_stndrd_N5_Slot1-1_1_1295,sp|P68431|H31_HUMAN,QLATK,No prop (fully tryptic) (NOT FOUND),1,4.97,163,4492
+8_hist_stndrd_O5_Slot1-1_1_1296,sp|P68431|H31_HUMAN,QLATK,No prop (fully tryptic) (NOT FOUND),1,4.97,253,8925
+100_hist_stndrd_C5_Slot1-1_1_1279,sp|P68431|H31_HUMAN,QLATK,No prop (fully tryptic) (NOT FOUND),1,5.22,222,13983
+D4_Slot1-1_1_1300,sp|P68431|H31_HUMAN,QLATK,1st round underprop (fully tryptic),1,10.45,23,12742
+E4_Slot1-1_1_1301,sp|P68431|H31_HUMAN,QLATK,1st round underprop (fully tryptic),1,10.45,195,11180
+F4_Slot1-1_1_1302,sp|P68431|H31_HUMAN,QLATK,1st round underprop (fully tryptic),1,10.45,0,12556
+G4_Slot1-1_1_1305,sp|P68431|H31_HUMAN,QLATK,1st round underprop (fully tryptic),1,10.48,23,10345
+H4_Slot1-1_1_1306,sp|P68431|H31_HUMAN,QLATK,1st round underprop (fully tryptic),1,10.43,0,13189
+I4_Slot1-1_1_1307,sp|P68431|H31_HUMAN,QLATK,1st round underprop (fully tryptic),1,10.43,334,21964
+2_J4_Slot1-1_1_1309,sp|P68431|H31_HUMAN,QLATK,1st round underprop (fully tryptic),1,10.48,60,21672
+2_K4_Slot1-1_1_1310,sp|P68431|H31_HUMAN,QLATK,1st round underprop (fully tryptic),1,10.46,6,29420
+4_L4_Slot1-1_1_1312,sp|P68431|H31_HUMAN,QLATK,1st round underprop (fully tryptic),1,10.45,16,45053
+4_M4_Slot1-1_1_1313,sp|P68431|H31_HUMAN,QLATK,1st round underprop (fully tryptic),1,10.48,247,50431
+8_N4_Slot1-1_1_1315,sp|P68431|H31_HUMAN,QLATK,1st round underprop (fully tryptic),1,10.43,822,90390
+8_O4_Slot1-1_1_1316,sp|P68431|H31_HUMAN,QLATK,1st round underprop (fully tryptic),1,10.45,481,90017
+100_C4_Slot1-1_1_1298,sp|P68431|H31_HUMAN,QLATK,1st round underprop (fully tryptic),1,10.4,1156,433999
+1_hist_stndrd_D5_Slot1-1_1_1281,sp|P68431|H31_HUMAN,QLATK,1st round underprop (fully tryptic),1,10.48,243,33080
+1_hist_stndrd_E5_Slot1-1_1_1282,sp|P68431|H31_HUMAN,QLATK,1st round underprop (fully tryptic),1,10.48,69,38271
+1_hist_stndrd_F5_Slot1-1_1_1283,sp|P68431|H31_HUMAN,QLATK,1st round underprop (fully tryptic),1,10.43,400,36543
+1_hist_stndrd_G5_Slot1-1_1_1285,sp|P68431|H31_HUMAN,QLATK,1st round underprop (fully tryptic),1,10.4,490,37929
+1_hist_stndrd_H5_Slot1-1_1_1286,sp|P68431|H31_HUMAN,QLATK,1st round underprop (fully tryptic),1,10.4,180,36225
+1_hist_stndrd_I5_Slot1-1_1_1287,sp|P68431|H31_HUMAN,QLATK,1st round underprop (fully tryptic),1,10.38,247,38117
+2_hist_stndrd_J5_Slot1-1_1_1289,sp|P68431|H31_HUMAN,QLATK,1st round underprop (fully tryptic),1,10.43,216,70188
+2_hist_stndrd_K5_Slot1-1_1_1290,sp|P68431|H31_HUMAN,QLATK,1st round underprop (fully tryptic),1,10.4,406,71208
+4_hist_stndrd_L5_Slot1-1_1_1292,sp|P68431|H31_HUMAN,QLATK,1st round underprop (fully tryptic),1,10.41,721,141748
+4_hist_stndrd_M5_Slot1-1_1_1293,sp|P68431|H31_HUMAN,QLATK,1st round underprop (fully tryptic),1,10.43,533,134056
+8_hist_stndrd_N5_Slot1-1_1_1295,sp|P68431|H31_HUMAN,QLATK,1st round underprop (fully tryptic),1,10.43,1425,330354
+8_hist_stndrd_O5_Slot1-1_1_1296,sp|P68431|H31_HUMAN,QLATK,1st round underprop (fully tryptic),1,10.43,1067,302555
+100_hist_stndrd_C5_Slot1-1_1_1279,sp|P68431|H31_HUMAN,QLATK,1st round underprop (fully tryptic),1,10.6,7490,5405035

@@ -1,0 +1,3391 @@
+---
+title: "4-normalization: nabut"
+output: html_document
+editor_options: 
+  chunk_output_type: console
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Preparation
+
+## Libraries
+```{r}
+library(SummarizedExperiment)
+library(PCAtools)
+library(ComplexHeatmap)
+library(BatchQC)
+library(sva)
+library(tidyr)
+library(dplyr)
+library(purrr)
+library(tibble)
+library(ggplot2)
+library(pheatmap)
+library(ggpubr)
+library(reshape2)
+library(viridis)
+```
+
+## Functions
+```{r}
+source("/Users/ronaldcutler/Dropbox\ (EinsteinMed)/Sidoli-lab/Projects/Single-cell-histone/Analysis/functions.R")
+```
+
+## Load data
+```{r}
+# metadata
+setwd("/Users/ronaldcutler/Dropbox\ (EinsteinMed)/Sidoli-lab/Projects/Single-cell-histone/Analysis/1-data/single-cell")
+
+coldata <- read.csv("sample-table.csv", 
+               header = TRUE,
+               stringsAsFactors = TRUE)
+#coldata[] <- lapply(coldata, as.factor) # make all vars factors
+
+# skyline output
+setwd("/Users/ronaldcutler/Dropbox\ (EinsteinMed)/Sidoli-lab/Projects/Single-cell-histone/Analysis/1-data/single-cell/intensities")
+
+# combine all plates
+df.combine <- read.csv("240321_Skyline_SC_export_nabut1_nabut4_cells.csv", 
+               header = TRUE,
+               stringsAsFactors = TRUE,
+               na.strings = "#N/A")
+
+# filter peptides
+df.combine.filter <- filter_peptides(df.combine)
+
+# deconvolute isobaric H4 peptides using fragments
+df.combine.filter.deconv <- deconvolute_h4(df.combine.filter)
+
+# combine into summarized experiment object
+obj <- load_skyline_summarized_experiment(df.combine.filter.deconv, coldata)
+
+# add total MS1 and MS2 to coldata
+obj$total.ms1 <- colSums(assay(obj, "MS1"), na.rm = TRUE)
+obj$total.ms2 <- colSums(assay(obj, "MS2"), na.rm = TRUE)
+
+# change replicate 4 to 2 to make it easier to read
+# obj$replicate <- as.character(obj$replicate)
+obj$replicate[obj$replicate == 4] <- 2
+obj$replicate <- factor(obj$replicate, levels = c(1, 2))
+```
+
+## Save object
+```{r}
+setwd("/Users/ronaldcutler/Dropbox\ (EinsteinMed)/Sidoli-lab/Projects/Single-cell-histone/Analysis/4-normalization/nabut")
+
+saveRDS(obj, "obj.RDS")
+```
+
+# Unfiltered Data Charecterization
+
+## Types of histone PTMs detected
+```{r, eval = FALSE}
+dir.create("/Users/ronaldcutler/Dropbox\ (EinsteinMed)/Sidoli-lab/Projects/Single-cell-histone/Analysis/4-normalization/nabut/unfiltered")
+setwd("/Users/ronaldcutler/Dropbox\ (EinsteinMed)/Sidoli-lab/Projects/Single-cell-histone/Analysis/4-normalization/nabut/unfiltered")
+
+mods <- count_modifications(rownames(obj))
+
+mods$variable <- factor(mods$variable, levels = mods$variable)
+
+pdf("PTM_types.pdf",
+    width = 5,
+    height = 5)
+ggplot(mods, aes(x = "", y = value, fill = variable)) +
+  geom_bar(width = 1, stat = "identity") +
+  coord_polar("y", start = 0) +
+  scale_fill_brewer(palette = "Set1") + # Use a color palette
+  theme_void() +
+  theme(legend.position = "right",  # Adjust legend position
+        legend.title = element_text(size = 12),  # Adjust legend title size
+        legend.text = element_text(size = 10)) +  # Adjust legend text size
+  geom_text(aes(label = paste0(round(value / sum(value) * 100), "%")), 
+            position = position_stack(vjust = 0.5), size = 3.5) +  # Add percentage labels
+  labs(fill = "Modification Type") +
+  ggtitle("Histone PTM types") +  # Add a title
+  theme(plot.title = element_text(hjust = 0.5))  # Center the title
+dev.off()
+```
+
+## Number of samples
+```{r}
+setwd("/Users/ronaldcutler/Dropbox\ (EinsteinMed)/Sidoli-lab/Projects/Single-cell-histone/Analysis/4-normalization/nabut/unfiltered")
+
+# by plate
+df <- as.data.frame(table(obj$replicate))
+names(df) <- c("Replicate", "Count")
+pdf("samples_per_replicate.pdf",
+    width = 5,
+    height = 5)
+ggplot(df, aes(x = Replicate, y = Count)) +
+  geom_bar(stat = "identity") +
+  coord_flip() +
+  theme_Publication() +
+  labs(title = "Samples per batch", x = "batch", y = "Frequency") +
+  scale_y_continuous(labels = scales::number_format(accuracy = 1))
+dev.off()
+
+# by condition
+df <- as.data.frame(table(obj$condition))
+df <- df[-1,] # remove empty samples
+names(df) <- c("Replicate", "Count")
+pdf("samples_per_condition.pdf",
+    width = 5,
+    height = 5)
+ggplot(df, aes(x = Replicate, y = Count)) +
+  geom_bar(stat = "identity") +
+  coord_flip() +
+  theme_Publication() +
+  labs(title = "Samples per condition", x = "Condition", y = "Frequency") +
+  scale_y_continuous(labels = scales::number_format(accuracy = 1))
+dev.off()
+
+# by type
+df <- as.data.frame(table(obj$multiplier))
+names(df) <- c("Replicate", "Count")
+pdf("samples_per_type.pdf",
+    width = 5,
+    height = 5)
+ggplot(df, aes(x = Replicate, y = Count)) +
+  geom_bar(stat = "identity") +
+  coord_flip() +
+  theme_Publication() +
+  labs(title = "Number of samples per multiplier", x = "# cells", y = "Frequency")
+dev.off()
+```
+
+## Peptides detected
+```{r}
+setwd("/Users/ronaldcutler/Dropbox\ (EinsteinMed)/Sidoli-lab/Projects/Single-cell-histone/Analysis/4-normalization/nabut/unfiltered")
+
+# MS1 precursors
+data <- assay(obj, "MS1")
+data[data == 0] <- NA
+df <- as.data.frame(colSums(!is.na(data)))
+names(df) <- c("Count")
+pdf("MS1_precursors_per_sample.pdf",
+    width = 5,
+    height = 5)
+ggplot(df, aes(x = Count)) +
+  geom_histogram() +
+  theme_Publication() +
+  labs(title = "Number of precursors\ndetected per sample", x = "# Peptides", y = "Frequency")
+dev.off()
+
+pdf("MS1_missing_values.pdf",
+    width = 5,
+    height = 5)
+set.seed(123)
+data <- assay(obj, "MS1")
+data[data == 0] <- NA
+pheatmap(data, 
+         annotation_col = as.data.frame(colData(obj)[,c("replicate", "multiplier")]), 
+         scale = "none", 
+         na_col = "black", 
+         show_rownames = FALSE,
+         show_colnames = FALSE,
+         cluster_rows = FALSE, 
+         cluster_cols = FALSE)
+dev.off()
+
+# MS2 fragments
+# not accurate because don't have data for individual fragments,
+# just aggreagate for each peptide
+data <- assay(obj, "MS2")
+data[data == 0] <- NA
+df <- as.data.frame(colSums(!is.na(data)))
+names(df) <- c("Count")
+pdf("MS2_fragments_per_sample.pdf",
+    width = 5,
+    height = 5)
+ggplot(df, aes(x = Count)) +
+  geom_histogram() +
+  theme_Publication() +
+  labs(title = "Number of fragments\ndetected per sample", x = "# Peptides", y = "Frequency")
+dev.off()
+
+pdf("MS2_missing_values.pdf",
+    width = 5,
+    height = 5)
+set.seed(123)
+data <- assay(obj, "MS2")
+data[data == 0] <- NA
+pheatmap(data, 
+         annotation_col = as.data.frame(colData(obj)[,c("replicate", "multiplier")]), 
+         scale = "none", 
+         na_col = "black", 
+         show_rownames = FALSE,
+         show_colnames = FALSE,
+         cluster_rows = FALSE, 
+         cluster_cols = FALSE)
+dev.off()
+```
+
+## Peptide retention times
+```{r}
+setwd("/Users/ronaldcutler/Dropbox\ (EinsteinMed)/Sidoli-lab/Projects/Single-cell-histone/Analysis/4-normalization/nabut/unfiltered")
+
+df <- assay(obj, "RT") %>% 
+  rownames_to_column("id") %>%
+  pivot_longer(
+    cols = -id, # This keeps the 'id' column fixed
+    names_to = "variable",
+    values_to = "value") %>%
+  merge(as.data.frame(colData(obj)), by.x = "variable", by.y = "row.names")
+
+pdf("peptide_retention_times_unflitered_replicate.pdf",
+    width = 5,
+    height = 15)
+ggplot(df, aes(x = id, y = value, color = as.factor(replicate))) +
+  geom_jitter(alpha = 0.5) +
+  theme_Publication() +
+  labs(title = "", x = "Peptidoform", y = "Retention time (min)") +
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1, size = 10),
+        legend.position = "bottom") +
+  scale_color_manual(name = "Replicate", values = brewer.pal(5, "Set1")[c(4:5)]) +
+  coord_flip()
+dev.off()
+
+pdf("peptide_retention_times_unflitered_type.pdf",
+    width = 10,
+    height = 10)
+ggplot(df, aes(x = id, y = value, color = as.factor(multiplier))) +
+  geom_jitter(alpha = 0.75) +
+  theme_Publication() +
+  labs(title = "", x = "Peptide", y = "Retention time (min)") +
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1, size = 10),
+        legend.position = "bottom") +
+  scale_color_discrete(name = "Type")
+dev.off()
+
+pdf("peptide_retention_times_unflitered_condition.pdf",
+    width = 10,
+    height = 10)
+ggplot(df, aes(x = id, y = value, color = as.factor(condition))) +
+  geom_jitter(alpha = 0.75) +
+  theme_Publication() +
+  labs(title = "", x = "Peptide", y = "Retention time (min)") +
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1, size = 10),
+        legend.position = "bottom") +
+  scale_color_discrete(name = "Condition ")
+dev.off()
+```
+
+## Intensity distribution
+
+### MS1
+```{r}
+setwd("/Users/ronaldcutler/Dropbox\ (EinsteinMed)/Sidoli-lab/Projects/Single-cell-histone/Analysis/4-normalization/nabut/unfiltered")
+
+# transform
+assays(obj)[["MS1.log2"]] <- log2(assay(obj, "MS1") + 1)
+
+# plot by cell
+df <- assay(obj, "MS1.log2") %>% 
+  rownames_to_column("id") %>%
+  pivot_longer(
+    cols = -id, # This keeps the 'id' column fixed
+    names_to = "variable",
+    values_to = "value") %>%
+  merge(as.data.frame(colData(obj)), by.x = "variable", by.y = "row.names")
+
+pdf("MS1.log2_distribution_unflitered_cell.pdf",
+    width = 8,
+    height = 10)
+ggplot(df, aes(x = as.factor(run_id), y = value, fill = as.factor(replicate))) +
+  geom_boxplot(width = 0.7) +
+  theme_Publication() +
+  labs(x = "Run", y = "Log2(MS1 intensity)", fill = "Batch") +
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1, size = 10)) +
+  facet_wrap(.~as.factor(multiplier), scales = "free_x", nrow = 3) +
+  scale_fill_manual(values = brewer.pal(5, "Set1")[c(4:5)])
+dev.off()
+
+# plot by peptide
+pdf("MS1.log2_distribution_unflitered_peptide.pdf",
+    width = 15,
+    height = 10)
+ggplot(df, aes(x = id, y = value)) +
+  geom_boxplot() +
+  theme_Publication() +
+  labs(x = "Peptide", y = "Log2(MS1 intensity)", fill = "Replicate") +
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1, size = 10)) +
+  facet_wrap(.~as.factor(multiplier), scales = "free_x")
+dev.off()
+
+# heatmap
+column_ha = HeatmapAnnotation(replicate = as.factor(obj$replicate),
+                              cell_number = as.factor(obj$multiplier),
+                              condition = as.factor(obj$condition))
+row_ha = rowAnnotation(charge = anno_barplot(rowData(obj)$Precursor.Charge))
+
+pdf("MS1.log2_unflitered_heatmap.pdf",
+    width = 10,
+    height = 10)
+set.seed(123)
+Heatmap(scale(assay(obj, "MS1.log2"), center = FALSE, scale = FALSE),
+        top_annotation = column_ha,
+        right_annotation = row_ha,
+        heatmap_legend_param = list(title = "Log2(MS1 area)"),
+        cluster_rows = TRUE,
+        cluster_columns = TRUE,
+        show_column_names = FALSE,
+        row_names_gp = gpar(fontsize = 10))
+dev.off()
+
+# PCA
+
+p <- pca(na.omit(assay(obj, "MS1.log2")),
+         metadata = colData(obj),
+         center = TRUE, 
+         scale = TRUE)
+
+screeplot(p)
+
+pdf("MS1.log2_unflitered_eigencor.pdf",
+    width = 5,
+    height = 5)
+eigencorplot(p,
+             main = "Principle component correlations",
+             cexMain = 1.5,
+             metavars = c("replicate", "date", "run_id", "multiplier", "condition"),
+             col = viridis(100),
+             colCorval = 'firebrick',
+             fontCorval = 2,
+             cexCorval = 0.5,
+             rotLabX = 45,
+             posColKey = 'top')
+dev.off()
+
+pdf("MS1.log2_unflitered_replicate_pca.pdf",
+    width = 5,
+    height = 5)
+biplot(p,
+       colby = "replicate", 
+       shape = "multiplier",
+       legendPosition = 'right',
+       hline = 0, 
+       vline = 0,
+       gridlines.major = FALSE, 
+       gridlines.minor = FALSE,
+       lab = NULL) +
+  scale_shape_binned()
+dev.off()
+
+pdf("MS1.log2_unflitered_condition_pca.pdf",
+    width = 5,
+    height = 5)
+biplot(p,
+       colby = "condition", 
+       shape = "multiplier",
+       legendPosition = 'right',
+       hline = 0, 
+       vline = 0,
+       gridlines.major = FALSE, 
+       gridlines.minor = FALSE,
+       lab = NULL) +
+  scale_shape_binned()
+dev.off()
+```
+
+### MS2
+```{r}
+setwd("/Users/ronaldcutler/Dropbox\ (EinsteinMed)/Sidoli-lab/Projects/Single-cell-histone/Analysis/4-normalization/nabut/unfiltered")
+
+# transform
+assays(obj)[["MS2.log2"]] <- log2(assay(obj, "MS2") + 1)
+
+# plot by cell
+df <- assay(obj, "MS2.log2") %>% 
+  rownames_to_column("id") %>%
+  pivot_longer(
+    cols = -id, # This keeps the 'id' column fixed
+    names_to = "variable",
+    values_to = "value") %>%
+  merge(as.data.frame(colData(obj)), by.x = "variable", by.y = "row.names")
+
+pdf("MS2.log2_distribution_unflitered_cell.pdf",
+    width = 8,
+    height = 10)
+ggplot(df, aes(x = as.factor(run_id), y = value, fill = as.factor(replicate))) +
+  geom_boxplot(width = 0.7) +
+  theme_Publication() +
+  labs(title = "Cell #", x = "Run", y = "Log2(MS2 intensity)", fill = "Replicate") +
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1, size = 10)) +
+  facet_wrap(.~as.factor(multiplier), scales = "free_x", nrow = 3)
+dev.off()
+
+# plot by peptide
+pdf("MS2.log2_distribution_unflitered_peptide.pdf",
+    width = 15,
+    height = 10)
+ggplot(df, aes(x = id, y = value)) +
+  geom_boxplot() +
+  theme_Publication() +
+  labs(title = "Cell #", x = "Peptide", y = "Log2(MS2 intensity)", fill = "Replicate") +
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1, size = 10)) +
+  facet_wrap(.~as.factor(multiplier), scales = "free_x")
+dev.off()
+
+# heatmap
+column_ha = HeatmapAnnotation(replicate = as.factor(obj$replicate),
+                              cell_number = as.factor(obj$multiplier),
+                              condition = as.factor(obj$condition))
+row_ha = rowAnnotation(charge = anno_barplot(rowData(obj)$Precursor.Charge))
+
+pdf("MS2.log2_unflitered_heatmap.pdf",
+    width = 10,
+    height = 10)
+set.seed(123)
+Heatmap(scale(assay(obj, "MS2.log2"), center = FALSE, scale = FALSE),
+        top_annotation = column_ha,
+        right_annotation = row_ha,
+        heatmap_legend_param = list(title = "Log2(MS2 area)"),
+        cluster_rows = TRUE,
+        cluster_columns = TRUE,
+        show_column_names = FALSE,
+        row_names_gp = gpar(fontsize = 10))
+dev.off()
+
+# PCA
+data <- assay(obj, "MS2.log2")
+data[data == 0] <- NA
+p <- pca(na.omit(data),
+         metadata = colData(obj),
+         center = TRUE, 
+         scale = TRUE)
+
+screeplot(p)
+
+pdf("MS2.log2_unflitered_eigencor.pdf",
+    width = 5,
+    height = 5)
+eigencorplot(p,
+             main = "Principle component correlations",
+             cexMain = 1.5,
+             metavars = c("replicate", "date", "run_id", "multiplier", "condition"),
+             col = viridis(100),
+             colCorval = 'firebrick',
+             fontCorval = 2,
+             cexCorval = 0.5,
+             rotLabX = 45,
+             posColKey = 'top')
+dev.off()
+
+pdf("MS2.log2_unflitered_replicate_pca.pdf",
+    width = 5,
+    height = 5)
+biplot(p,
+       colby = "replicate", 
+       shape = "multiplier",
+       legendPosition = 'right',
+       hline = 0, 
+       vline = 0,
+       gridlines.major = FALSE, 
+       gridlines.minor = FALSE,
+       lab = NULL) +
+  scale_shape_binned()
+dev.off()
+
+pdf("MS2.log2_unflitered_condition_pca.pdf",
+    width = 5,
+    height = 5)
+biplot(p,
+       colby = "condition", 
+       shape = "multiplier",
+       legendPosition = 'right',
+       hline = 0, 
+       vline = 0,
+       gridlines.major = FALSE, 
+       gridlines.minor = FALSE,
+       lab = NULL) +
+  scale_shape_binned()
+dev.off()
+```
+
+### MS1 vs MS2
+```{r}
+setwd("/Users/ronaldcutler/Dropbox\ (EinsteinMed)/Sidoli-lab/Projects/Single-cell-histone/Analysis/4-normalization/nabut/unfiltered")
+
+# by standards
+df.1 <- assay(obj, "MS1.log2") %>% 
+  rownames_to_column("id") %>%
+  pivot_longer(
+    cols = -id, # This keeps the 'id' column fixed
+    names_to = "variable",
+    values_to = "value")
+
+
+df.2 <- assay(obj, "MS2.log2") %>% 
+  rownames_to_column("id") %>%
+  pivot_longer(
+    cols = -id, # This keeps the 'id' column fixed
+    names_to = "variable",
+    values_to = "value")
+
+df <- cbind(df.1, df.2$value)
+colnames(df) <- c("id", "variable", "ms1", "ms2")
+df <- merge(df, as.data.frame(colData(obj)), by.x = "variable", by.y = "row.names")
+df$id <- gsub(";", " ", df$id)
+
+# by cell amount
+pdf("MS1_vs_MS2_unflitered_type.pdf",
+    width = 8,
+    height = 8)
+ggplot(subset(df, multiplier != "0"), aes(x = ms1, y = ms2, color = as.factor(replicate))) +
+  geom_point() +
+  stat_smooth(method = "lm") +
+  stat_cor() +
+  facet_wrap(.~as.factor(multiplier)) +
+  labs(title = "", x = "Log2(MS1)", y = "Log2(MS2)") +
+  theme_Publication() +
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1)) +
+  scale_color_discrete(name = "Replicate")
+dev.off()
+
+# by peptide for single cells
+pdf("MS1_vs_MS2_unflitered_peptide.pdf",
+    width = 25,
+    height = 25)
+ggplot(subset(df, multiplier == "1"), aes(x = ms1, y = ms2, color = as.factor(replicate))) +
+  geom_point() +
+  stat_smooth(method = "lm") +
+  stat_cor() +
+  facet_wrap(.~as.factor(multiplier)) +
+  labs(title = "HIstone Peptides", x = "Log2(MS1)", y = "Log2(MS2)") +
+  theme_Publication(base_size = 12) +
+  scale_y_continuous(labels = function(x) format(x, scientific = TRUE)) +
+  facet_wrap(.~id, scales = "free", labeller = labeller(id = label_wrap_gen(20))) +
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1)) +
+  scale_color_discrete(name = "Replicate")
+dev.off()
+```
+
+### Background noise
+```{r}
+# plot single cells vs blanks
+df <- assay(obj, "MS1") %>% 
+  rownames_to_column("id") %>%
+  pivot_longer(
+    cols = -id, # This keeps the 'id' column fixed
+    names_to = "variable",
+    values_to = "value") %>%
+  merge(as.data.frame(colData(obj)), by.x = "variable", by.y = "row.names") %>%
+  subset(multiplier %in% c(0, 1))
+df$id <- gsub(";", " ", df$id)
+
+# summarize
+df %>%
+  group_by(multiplier) %>%
+  summarize(mean = mean(value))
+
+
+pdf("MS1_0cell_vs_1cell_peptide_all.pdf",
+    width = 20,
+    height = 20)
+ggplot(df, aes(x = as.factor(multiplier), y = value, fill = as.factor(multiplier))) +
+  geom_boxplot() +
+  geom_jitter(alpha = 0.5) +
+  scale_y_continuous(labels = function(x) format(x, scientific = TRUE)) +
+  theme_Publication(base_size = 12) +
+  labs(title = "", x = "Cell #", y = "MS1 Intensity") +
+  facet_wrap(~id, scales = "free_y", labeller = labeller(id = label_wrap_gen(20))) +
+  theme(legend.position = "none")
+dev.off()
+
+pdf("MS1_0cell_vs_1cell_peptide_replicate.pdf",
+    width = 20,
+    height = 20)
+ggplot(df, aes(x = as.factor(multiplier), y = value)) +
+  geom_boxplot(outlier.shape = NA) +
+  geom_jitter(alpha = 0.75, aes(color = as.factor(replicate))) +
+  scale_y_continuous(labels = function(x) format(x, scientific = TRUE)) +
+  theme_Publication(base_size = 12) +
+  labs(title = "", x = "Cell #", y = "MS1 Intensity", color = "Replicate") +
+  facet_wrap(~id, scales = "free_y", labeller = labeller(id = label_wrap_gen(20)))
+dev.off()
+
+pdf("MS1_0cell_vs_1cell_all.pdf",
+    width = 3,
+    height = 3)
+ggplot(df, aes(x = value, fill = as.factor(multiplier))) +
+  geom_density(alpha = 0.5) +
+  scale_x_log10() +
+  theme_Publication(base_size = 12) +
+  labs(title = "", x = "MS1 Intensity", y = "Density", fill = "Cell #")
+dev.off()
+
+pdf("MS1_0cell_vs_1cell_replicate.pdf",
+    width = 5,
+    height = 3)
+ggplot(df, aes(x = value, fill = as.factor(multiplier))) +
+  geom_density(alpha = 0.5) +
+  scale_x_log10() +
+  theme_Publication(base_size = 12) +
+  labs(title = "", x = "MS1 Intensity", y = "Density", fill = "Cell #") +
+  facet_wrap(~replicate, nrow = 1)
+dev.off()
+```
+
+# Filtering
+
+## Missing peptides
+- Filter out peptides not detected in > 50% of single-cells
+```{r}
+dir.create("/Users/ronaldcutler/Dropbox\ (EinsteinMed)/Sidoli-lab/Projects/Single-cell-histone/Analysis/4-normalization/nabut/filtered")
+setwd("/Users/ronaldcutler/Dropbox\ (EinsteinMed)/Sidoli-lab/Projects/Single-cell-histone/Analysis/4-normalization/nabut/filtered")
+
+obj.peptide_filter <- filter_missing_peptides(obj, threshold = 0.5)
+
+saveRDS(obj.peptide_filter, "obj.peptide_filter.RDS")
+```
+
+## Background noise removal
+- Filter out peptides whose single cell signal is less than 1.5 times greater than the background signal
+```{r}
+setwd("/Users/ronaldcutler/Dropbox\ (EinsteinMed)/Sidoli-lab/Projects/Single-cell-histone/Analysis/4-normalization/nabut/filtered")
+
+obj.background_filter <- filter_background_peptides(obj.peptide_filter, ratio = 1)
+
+saveRDS(obj.background_filter, "obj.background_filter.RDS")
+```
+
+### Background noise plots
+- Plot now because empty cells will be removed in next filter
+
+#### MS1
+```{r}
+setwd("/Users/ronaldcutler/Dropbox\ (EinsteinMed)/Sidoli-lab/Projects/Single-cell-histone/Analysis/4-normalization/nabut/filtered")
+
+# plot single cells vs blanks
+df <- assay(obj.background_filter, "MS1") %>% 
+  rownames_to_column("id") %>%
+  pivot_longer(
+    cols = -id, # This keeps the 'id' column fixed
+    names_to = "variable",
+    values_to = "value") %>%
+  merge(as.data.frame(colData(obj.background_filter)), by.x = "variable", by.y = "row.names") %>%
+  subset(multiplier %in% c(0, 1))
+df$id <- gsub(";", " ", df$id)
+
+# peptides separate
+  # replicates merged
+  pdf("MS1_0cell_vs_1cell_peptide_all.pdf",
+      width = 20,
+      height = 20)
+  ggplot(df, aes(x = as.factor(multiplier), y = value, fill = as.factor(multiplier))) +
+    geom_boxplot() +
+    geom_jitter(alpha = 0.5) +
+    scale_y_continuous(labels = function(x) format(x, scientific = TRUE)) +
+    theme_Publication(base_size = 12) +
+    labs(title = "", x = "Cell #", y = "MS1 Intensity") +
+    facet_wrap(~id, scales = "free_y", labeller = labeller(id = label_wrap_gen(20))) +
+    theme(legend.position = "none")
+  dev.off()
+  
+  # replicates separated
+  pdf("MS1_0cell_vs_1cell_peptide_replicate.pdf",
+      width = 20,
+      height = 20)
+  ggplot(df, aes(x = as.factor(multiplier), y = value)) +
+    geom_boxplot(outlier.shape = NA) +
+    geom_jitter(alpha = 0.75, aes(color = as.factor(replicate))) +
+    scale_y_continuous(labels = function(x) format(x, scientific = TRUE)) +
+    theme_Publication(base_size = 12) +
+    labs(title = "", x = "Cell #", y = "MS1 Intensity", color = "Replicate") +
+    facet_wrap(~id, scales = "free_y", labeller = labeller(id = label_wrap_gen(20)))
+  dev.off()
+
+# all peptides
+  # replicates merged
+  pdf("MS1.log2_0cell_vs_1cell_all.pdf",
+      width = 3,
+      height = 3)
+  ggplot(df, aes(x = value, fill = as.factor(multiplier))) +
+    geom_density(alpha = 0.5) +
+    scale_x_log10() +
+    theme_Publication(base_size = 12) +
+    labs(title = "", x = "Log2(MS1 intensity)", y = "Density", fill = "Cell #")
+  dev.off()
+  
+  # replicates separated
+  pdf("MS1.log2_0cell_vs_1cell_replicate.pdf",
+      width = 5,
+      height = 3)
+  ggplot(df, aes(x = value, fill = as.factor(multiplier))) +
+    geom_density(alpha = 0.5) +
+    scale_x_log10() +
+    theme_Publication(base_size = 12) +
+    labs(title = "", x = "Log2(MS1 intensity)", y = "Density", fill = "Cell #") +
+    theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1)) +
+    facet_wrap(~replicate, nrow = 1)
+  dev.off()
+```
+
+#### MS2
+```{r}
+setwd("/Users/ronaldcutler/Dropbox\ (EinsteinMed)/Sidoli-lab/Projects/Single-cell-histone/Analysis/4-normalization/auto+nabut/filtered")
+
+# plot single cells vs blanks
+df <- assay(obj.background_filter, "MS2") %>% 
+  rownames_to_column("id") %>%
+  pivot_longer(
+    cols = -id, # This keeps the 'id' column fixed
+    names_to = "variable",
+    values_to = "value") %>%
+  merge(as.data.frame(colData(obj.background_filter)), by.x = "variable", by.y = "row.names") %>%
+  subset(multiplier %in% c(0, 1))
+df$id <- gsub(";", " ", df$id)
+
+# peptides separate
+  # replicates merged
+  pdf("MS2_0cell_vs_1cell_peptide_all.pdf",
+      width = 20,
+      height = 20)
+  ggplot(df, aes(x = as.factor(multiplier), y = value, fill = as.factor(multiplier))) +
+    geom_boxplot() +
+    geom_jitter(alpha = 0.5) +
+    scale_y_continuous(labels = function(x) format(x, scientific = TRUE)) +
+    theme_Publication(base_size = 12) +
+    labs(title = "", x = "Cell #", y = "MS2 Intensity") +
+    facet_wrap(~id, scales = "free_y", labeller = labeller(id = label_wrap_gen(20))) +
+    theme(legend.position = "none")
+  dev.off()
+  
+  # replicates separated
+  pdf("MS2_0cell_vs_1cell_peptide_replicate.pdf",
+      width = 20,
+      height = 20)
+  ggplot(df, aes(x = as.factor(multiplier), y = value)) +
+    geom_boxplot(outlier.shape = NA) +
+    geom_jitter(alpha = 0.75, aes(color = as.factor(replicate))) +
+    scale_y_continuous(labels = function(x) format(x, scientific = TRUE)) +
+    theme_Publication(base_size = 12) +
+    labs(title = "", x = "Cell #", y = "MS2 Intensity", color = "Replicate") +
+    facet_wrap(~id, scales = "free_y", labeller = labeller(id = label_wrap_gen(20)))
+  dev.off()
+
+
+# all peptides
+  # replicates merged
+  pdf("MS2.log2_0cell_vs_1cell_all.pdf",
+      width = 3,
+      height = 3)
+  ggplot(df, aes(x = value, fill = as.factor(multiplier))) +
+    geom_density(alpha = 0.5) +
+    scale_x_log10() +
+    theme_Publication(base_size = 12) +
+    labs(title = "", x = "Log2(MS2 intensity)", y = "Density", fill = "Cell #")
+  dev.off()
+  
+  # replicates separated
+  pdf("MS2.log2_0cell_vs_1cell_replicate.pdf",
+      width = 5,
+      height = 3)
+  ggplot(df, aes(x = value, fill = as.factor(multiplier))) +
+    geom_density(alpha = 0.5) +
+    scale_x_log10() +
+    theme_Publication(base_size = 12) +
+    labs(title = "", x = "Log2(MS2 intensity)", y = "Density", fill = "Cell #") +
+    facet_wrap(~replicate, nrow = 1) +
+    theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1))
+  dev.off()
+```
+
+
+## Non-linear peptides based on calibration curves with differing amounts of cells
+- Go back to calibration curve scripts to plot filtered peptides
+```{r}
+setwd("/Users/ronaldcutler/Dropbox\ (EinsteinMed)/Sidoli-lab/Projects/Single-cell-histone/Analysis/3-calibration-curves/auto/cells/unfiltered")
+
+quant_filter <- read.csv("MS1_calibration_curve_correlations.csv")
+ 
+setwd("/Users/ronaldcutler/Dropbox\ (EinsteinMed)/Sidoli-lab/Projects/Single-cell-histone/Analysis/4-normalization/nabut/filtered")
+
+obj.quant_filter <- filter_non_linear_peptides(quant_filter, obj.background_filter, correlation = 0.8, p_value = 0.05)
+
+saveRDS(obj.quant_filter, "obj.quant_filter.RDS")
+```
+
+## Cell filtering
+- Mean intensity of cell is 2SD away from average of all cells. These also cluster with empty cells
+- Only use MS1, can try to incorporate MS2 in future?
+```{r}
+setwd("/Users/ronaldcutler/Dropbox\ (EinsteinMed)/Sidoli-lab/Projects/Single-cell-histone/Analysis/4-normalization/nabut/filtered")
+
+# filter out 2, 4, 8 cells
+obj.background_filter <- obj.background_filter[,obj.background_filter$multiplier == 0 |
+                                               obj.background_filter$multiplier == 1 |
+                                               obj.background_filter$multiplier == 100]
+
+# set deviation so that it filters all empty samples
+obj.cell_filter <- filter_samples(obj.background_filter, assay = "MS1", dev = 1, filter_low = TRUE, filter_high = FALSE)
+
+# change coldata
+obj.cell_filter$multiplier <- factor(obj.cell_filter$multiplier)
+
+background_filter_df <- as.data.frame(colData(obj.background_filter)) %>%
+  group_by(replicate, condition) %>%
+  summarise(count = n(), .groups = 'drop') %>%
+  filter(condition != "")
+
+cell_filter_df <- as.data.frame(colData(obj.cell_filter)) %>%
+  group_by(replicate, condition) %>%
+  summarise(count = n(), .groups = 'drop') %>%
+  filter(condition != "")
+
+background_filter_df$filtered <- background_filter_df$count - cell_filter_df$count
+
+df_long <- background_filter_df %>%
+  pivot_longer(cols = c(count, filtered),
+               names_to = "variable",
+               values_to = "value")
+
+# plot
+pdf("samples_filtered.pdf",
+    width = 5,
+    height = 5)
+ggplot(df_long, aes(x = replicate, y = value, fill = variable)) +
+  geom_bar(stat = "identity", position = "stack") +
+  facet_wrap(~ condition, scales = "free_x") +
+  scale_x_discrete(labels = c("1" = "4", "2" = "5")) +
+  scale_fill_manual(values = c("count" = "skyblue", "filtered" = "darkblue"),
+                    labels = c("count" = "Total", "filtered" = "Filtered"))+
+  theme_Publication() +
+  labs(title = "# Injections per condition",
+       x = "Batch",
+       y = "# Injections")
+dev.off()
+```
+
+## Save object
+```{r}
+setwd("/Users/ronaldcutler/Dropbox\ (EinsteinMed)/Sidoli-lab/Projects/Single-cell-histone/Analysis/4-normalization/nabut")
+
+obj.filter <- obj.cell_filter
+saveRDS(obj.filter, "obj.filter.RDS")
+```
+
+
+# Filtered Data Charecterization
+
+## Peptide retention times
+```{r}
+dir.create("/Users/ronaldcutler/Dropbox\ (EinsteinMed)/Sidoli-lab/Projects/Single-cell-histone/Analysis/4-normalization/nabut/filtered")
+setwd("/Users/ronaldcutler/Dropbox\ (EinsteinMed)/Sidoli-lab/Projects/Single-cell-histone/Analysis/4-normalization/nabut/filtered")
+
+df <- assay(obj.filter, "RT") %>% 
+  rownames_to_column("id") %>%
+  pivot_longer(
+    cols = -id, # This keeps the 'id' column fixed
+    names_to = "variable",
+    values_to = "value") %>%
+  merge(as.data.frame(colData(obj.cell_filter)), by.x = "variable", by.y = "row.names")
+
+pdf("peptide_retention_times_filtered_replicate.pdf",
+    width = 10,
+    height = 10)
+ggplot(df, aes(x = id, y = value, color = as.factor(replicate))) +
+  geom_jitter(alpha = 0.75) +
+  theme_Publication() +
+  labs(title = "", x = "Peptide", y = "Retention time (min)") +
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1, size = 10),
+        legend.position = "bottom") +
+  scale_color_discrete(name = "Replicate")
+dev.off()
+
+pdf("peptide_retention_times_filtered_type.pdf",
+    width = 10,
+    height = 10)
+ggplot(df, aes(x = id, y = value, color = as.factor(multiplier))) +
+  geom_jitter(alpha = 0.75) +
+  theme_Publication() +
+  labs(title = "", x = "Peptide", y = "Retention time (min)") +
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1, size = 10),
+        legend.position = "bottom") +
+  scale_color_discrete(name = "Type")
+dev.off()
+
+# single cells only
+pdf("peptide_retention_times_filtered_1cell.pdf",
+    width = 6,
+    height = 15)
+ggplot(subset(df, multiplier == "1"), aes(x = id, y = value, color = as.factor(replicate))) +
+  geom_jitter(alpha = 0.75) +
+  coord_flip() +
+  theme_Publication() +
+  labs(title = "", x = "Peptide", y = "Retention time (min)") +
+  theme(legend.position = "bottom") +
+  scale_color_discrete(name = "Replicate")
+dev.off()
+```
+
+## Intensity distribution
+
+### MS1
+```{r}
+setwd("/Users/ronaldcutler/Dropbox\ (EinsteinMed)/Sidoli-lab/Projects/Single-cell-histone/Analysis/4-normalization/nabut/filtered")
+
+# transform
+assays(obj.filter)[["MS1.log2"]] <- log2(assay(obj.filter, "MS1") + 1)
+
+# plot by cell
+df <- assay(obj.filter, "MS1.log2") %>% 
+  rownames_to_column("id") %>%
+  pivot_longer(
+    cols = -id, # This keeps the 'id' column fixed
+    names_to = "variable",
+    values_to = "value") %>%
+  merge(as.data.frame(colData(obj.filter)), by.x = "variable", by.y = "row.names")
+
+pdf("MS1.log2_distribution_filtered_cell.pdf",
+    width = 8,
+    height = 10)
+ggplot(df, aes(x = as.factor(run_id), y = value, fill = as.factor(replicate))) +
+  geom_boxplot(width = 0.7) +
+  theme_Publication() +
+  labs(title = "Cell #", x = "Run", y = "Log2(MS1 intensity)", fill = "Replicate") +
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1, size = 10)) +
+  facet_wrap(.~as.factor(multiplier), scales = "free_x", nrow = 3)
+dev.off()
+
+# plot by peptide
+pdf("MS1.log2_distribution_filtered_peptide.pdf",
+    width = 15,
+    height = 10)
+ggplot(df, aes(x = id, y = value)) +
+  geom_boxplot() +
+  theme_Publication() +
+  labs(title = "Cell #", x = "Peptide", y = "Log2(MS1 intensity)", fill = "Replicate") +
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1, size = 10)) +
+  facet_wrap(.~as.factor(multiplier), scales = "free_x")
+dev.off()
+
+# heatmap
+column_ha = HeatmapAnnotation(replicate = as.factor(obj.filter$replicate),
+                              cell_number = as.factor(obj.filter$multiplier),
+                              condition = as.factor(obj.filter$condition))
+row_ha = rowAnnotation(charge = anno_barplot(rowData(obj.filter)$Precursor.Charge))
+
+pdf("MS1.log2_filtered_heatmap.pdf",
+    width = 10,
+    height = 10)
+set.seed(123)
+Heatmap(scale(assay(obj.filter, "MS1.log2"), center = FALSE, scale = FALSE),
+        top_annotation = column_ha,
+        right_annotation = row_ha,
+        heatmap_legend_param = list(title = "Log2(MS1 area)"),
+        cluster_rows = TRUE,
+        cluster_columns = TRUE,
+        show_column_names = FALSE,
+        row_names_gp = gpar(fontsize = 10))
+dev.off()
+
+# PCA
+p <- pca(na.omit(assay(obj.filter, "MS1.log2")),
+         metadata = colData(obj.filter),
+         center = TRUE, 
+         scale = TRUE)
+
+screeplot(p)
+
+pdf("MS1.log2_filtered_eigencor.pdf",
+    width = 5,
+    height = 5)
+eigencorplot(p,
+             main = "Principle component correlations",
+             cexMain = 1.5,
+             metavars = c("replicate", "date", "run_id", "multiplier", "condition"),
+             col = viridis(100),
+             colCorval = 'firebrick',
+             fontCorval = 2,
+             cexCorval = 0.5,
+             rotLabX = 45,
+             posColKey = 'top')
+dev.off()
+
+pdf("MS1.log2_filtered_replicate_pca.pdf",
+    width = 4,
+    height = 5)
+biplot(p,
+       colby = "replicate", 
+       shape = "multiplier",
+       legendPosition = 'top',
+       hline = 0, 
+       vline = 0,
+       lab = NULL) +
+  labs(color = "Replicate",
+       shape = "# Cells") +
+  theme_Publication() +
+  theme(legend.box="vertical", 
+        legend.margin=margin())
+dev.off()
+
+pdf("MS1.log2_filtered_condition_pca.pdf",
+    width = 4,
+    height = 5)
+biplot(p,
+       colby = "condition", 
+       shape = "replicate",
+       legendPosition = 'top',
+       hline = 0, 
+       vline = 0,
+       lab = NULL) +
+  labs(color = "Condition",
+       shape = "Replicate") +
+  theme_Publication() +
+  theme(legend.box="vertical", 
+        legend.margin=margin())
+dev.off()
+```
+
+### MS2
+```{r}
+setwd("/Users/ronaldcutler/Dropbox\ (EinsteinMed)/Sidoli-lab/Projects/Single-cell-histone/Analysis/4-normalization/nabut/filtered")
+
+# transform
+assays(obj.filter)[["MS2.log2"]] <- log2(assay(obj.filter, "MS2") + 1)
+
+# plot by cell
+df <- assay(obj.filter, "MS2.log2") %>% 
+  rownames_to_column("id") %>%
+  pivot_longer(
+    cols = -id, # This keeps the 'id' column fixed
+    names_to = "variable",
+    values_to = "value") %>%
+  merge(as.data.frame(colData(obj.filter)), by.x = "variable", by.y = "row.names")
+
+pdf("MS2.log2_distribution_filtered_cell.pdf",
+    width = 8,
+    height = 10)
+ggplot(df, aes(x = as.factor(run_id), y = value, fill = as.factor(replicate))) +
+  geom_boxplot(width = 0.7) +
+  theme_Publication() +
+  labs(title = "Cell #", x = "Run", y = "Log2(MS2 intensity)", fill = "Replicate") +
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1, size = 10)) +
+  facet_wrap(.~as.factor(multiplier), scales = "free_x", nrow = 3)
+dev.off()
+
+# plot by peptide
+pdf("MS2.log2_distribution_filtered_peptide.pdf",
+    width = 15,
+    height = 10)
+ggplot(df, aes(x = id, y = value)) +
+  geom_boxplot() +
+  theme_Publication() +
+  labs(title = "Cell #", x = "Peptide", y = "Log2(MS2 intensity)", fill = "Replicate") +
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1, size = 10)) +
+  facet_wrap(.~as.factor(multiplier), scales = "free_x")
+dev.off()
+
+# heatmap
+column_ha = HeatmapAnnotation(replicate = as.factor(obj.filter$replicate),
+                              cell_number = as.factor(obj.filter$multiplier),
+                              condition = as.factor(obj.filter$condition))
+row_ha = rowAnnotation(charge = anno_barplot(rowData(obj.filter)$Precursor.Charge))
+
+pdf("MS2.log2_filtered_heatmap.pdf",
+    width = 10,
+    height = 10)
+set.seed(123)
+Heatmap(scale(assay(obj.filter, "MS2.log2"), center = FALSE, scale = FALSE),
+        top_annotation = column_ha,
+        right_annotation = row_ha,
+        heatmap_legend_param = list(title = "Log2(MS2 area)"),
+        cluster_rows = TRUE,
+        cluster_columns = TRUE,
+        show_column_names = FALSE,
+        row_names_gp = gpar(fontsize = 10))
+dev.off()
+
+# PCA
+data <- assay(obj.filter, "MS2.log2")
+data[data == 0] <- NA
+p <- pca(na.omit(data),
+         metadata = colData(obj.filter),
+         center = TRUE, 
+         scale = TRUE)
+
+screeplot(p)
+
+pdf("MS2.log2_filtered_eigencor.pdf",
+    width = 5,
+    height = 5)
+eigencorplot(p,
+             main = "Principle component correlations",
+             cexMain = 1.5,
+             metavars = c("replicate", "date", "run_id", "multiplier", "condition"),
+             col = viridis(100),
+             colCorval = 'firebrick',
+             fontCorval = 2,
+             cexCorval = 0.5,
+             rotLabX = 45,
+             posColKey = 'top')
+dev.off()
+
+pdf("MS2.log2_filtered_replicate_pca.pdf",
+    width = 4,
+    height = 5)
+biplot(p,
+       colby = "replicate", 
+       shape = "multiplier",
+       legendPosition = 'top',
+       hline = 0, 
+       vline = 0,
+       lab = NULL) +
+  labs(color = "Replicate",
+       shape = "# Cells") +
+  theme_Publication() +
+  theme(legend.box="vertical", 
+        legend.margin=margin())
+dev.off()
+
+pdf("MS2.log2_filtered_condition_pca.pdf",
+    width = 4,
+    height = 5)
+biplot(p,
+       colby = "condition", 
+       shape = "replicate",
+       legendPosition = 'top',
+       hline = 0, 
+       vline = 0,
+       lab = NULL) +
+  labs(color = "Condition",
+       shape = "Replicate") +
+  theme_Publication() +
+  theme(legend.box="vertical", 
+        legend.margin=margin())
+dev.off()
+```
+
+### MS1 vs MS2
+```{r}
+df.1 <- assay(obj.cell_filter, "MS1.log2") %>% 
+  rownames_to_column("id") %>%
+  pivot_longer(
+    cols = -id, # This keeps the 'id' column fixed
+    names_to = "variable",
+    values_to = "value")
+
+df.2 <- assay(obj.cell_filter, "MS2.log2") %>% 
+  rownames_to_column("id") %>%
+  pivot_longer(
+    cols = -id, # This keeps the 'id' column fixed
+    names_to = "variable",
+    values_to = "value")
+
+df <- cbind(df.1, df.2$value)
+colnames(df) <- c("id", "variable", "ms1", "ms2")
+df <- merge(df, as.data.frame(colData(obj.cell_filter)), by.x = "variable", by.y = "row.names")
+df$id <- gsub(";", " ", df$id)
+
+# by cell amount
+pdf("MS1_vs_MS2_filtered_type.pdf",
+    width = 8,
+    height = 8)
+ggplot(subset(df, multiplier != "0"), aes(x = ms1, y = ms2, color = as.factor(replicate))) +
+  geom_point() +
+  stat_smooth(method = "lm") +
+  stat_cor() +
+  facet_wrap(.~as.factor(multiplier)) +
+  labs(title = "", x = "Log2(MS1)", y = "Log2(MS2)") +
+  theme_Publication() +
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1)) +
+  scale_color_discrete(name = "Replicate")
+dev.off()
+
+# just single cells
+pdf("MS1_vs_MS2_filtered_1cell.pdf",
+    width = 5,
+    height = 5)
+ggplot(subset(df, multiplier == "1"), aes(x = ms1, y = ms2, color = as.factor(replicate))) +
+  geom_point() +
+  stat_smooth(method = "lm") +
+  stat_cor() +
+  labs(title = "", x = "Log2(MS1)", y = "Log2(MS2)", color = "Replicate") +
+  theme_Publication() +
+  guides(color = guide_legend(override.aes = list(shape = 19)))
+dev.off()
+
+# facet peptides for single cells
+pdf("MS1_vs_MS2_filtered_peptide.pdf",
+    width = 25,
+    height = 25)
+ggplot(subset(df, multiplier == "1"), aes(x = ms1, y = ms2, color = as.factor(replicate))) +
+  geom_point() +
+  stat_smooth(method = "lm") +
+  stat_cor() +
+  facet_wrap(.~as.factor(multiplier)) +
+  labs(title = "HIstone Peptides", x = "Log2(MS1)", y = "Log2(MS2)") +
+  theme_Publication(base_size = 12) +
+  scale_y_continuous(labels = function(x) format(x, scientific = TRUE)) +
+  facet_wrap(.~id, scales = "free", labeller = labeller(id = label_wrap_gen(20))) +
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1)) +
+  scale_color_discrete(name = "Replicate")
+dev.off()
+
+# by single cell averages
+df.summary <- df %>%
+  filter(multiplier == "1") %>%
+  group_by(id, replicate) %>%
+  summarise(ms1.mean = mean(ms1),
+            ms2.mean = mean(ms2))
+
+pdf("MS1_vs_MS2_filtered_peptide_1cell_mean.pdf",
+    width = 5,
+    height = 5)
+ggplot(df.summary, aes(x = ms1.mean, y = ms2.mean, color = as.factor(replicate))) +
+  geom_point() +
+  stat_smooth(method = "lm") +
+  stat_cor() +
+  labs(title = "", x = "Log2(MS1)", y = "Log2(MS2)", color = "Replicate") +
+  theme_Publication() +
+  guides(color = guide_legend(override.aes = aes(label = ""))) +
+  geom_text_repel(data = subset(df.summary, ms1.mean > 15 & ms2.mean < 12 & replicate == 1), 
+            aes(label = id), max.overlaps	= Inf, color = "black", min.segment.length = 0)
+dev.off()
+```
+
+# Normalization
+
+## Total abundance
+
+### MS1
+```{r}
+dir.create("/Users/ronaldcutler/Dropbox\ (EinsteinMed)/Sidoli-lab/Projects/Single-cell-histone/Analysis/4-normalization/nabut/normalization")
+setwd("/Users/ronaldcutler/Dropbox\ (EinsteinMed)/Sidoli-lab/Projects/Single-cell-histone/Analysis/4-normalization/nabut/normalization")
+
+# total abundance
+assays(obj.filter, withDimnames=FALSE)[["MS1.total.log2"]] <- assay(obj.filter, "MS1") %>%
+  map_df(~ .x / sum(.x)) %>%
+  map_df(~ log2(.x + 0.0001)) %>%
+  as.data.frame()
+
+# plot by cell
+df <- assay(obj.filter, "MS1.total.log2") %>% 
+  rownames_to_column("id") %>%
+  pivot_longer(
+    cols = -id, # This keeps the 'id' column fixed
+    names_to = "variable",
+    values_to = "value") %>%
+  merge(as.data.frame(colData(obj.filter)), by.x = "variable", by.y = "row.names")
+
+pdf("MS1.total.log2_distribution_cell.pdf",
+    width = 8,
+    height = 8)
+ggplot(df, aes(x = as.factor(run_id), y = value, fill = as.factor(replicate))) +
+  geom_boxplot(width = 0.7) +
+  theme_Publication() +
+  labs(title = "Cell #", x = "Run", y = "Log2(MS1 intensity)", fill = "Replicate") +
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1, size = 10)) +
+  facet_wrap(.~as.factor(multiplier), scales = "free_x", nrow = 2)
+dev.off()
+
+# plot by peptide
+pdf("MS1.total.log2_distribution_peptide.pdf",
+    width = 15,
+    height = 10)
+ggplot(df, aes(x = id, y = value)) +
+  geom_boxplot() +
+  theme_Publication() +
+  labs(title = "Cell #", x = "Peptide", y = "Log2(MS1 intensity)", fill = "Replicate") +
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1, size = 10)) +
+  facet_wrap(.~as.factor(multiplier), scales = "free_x")
+dev.off()
+
+# heatmap
+column_ha = HeatmapAnnotation(replicate = as.factor(obj.filter$replicate),
+                              cell_number = as.factor(obj.filter$multiplier),
+                              condition = as.factor(obj.filter$condition))
+row_ha = rowAnnotation(charge = anno_barplot(rowData(obj.filter)$Precursor.Charge))
+
+pdf("MS1.total.log2_heatmap.pdf",
+    width = 10,
+    height = 10)
+set.seed(123)
+Heatmap(scale(assay(obj.filter, "MS1.total.log2"), center = FALSE, scale = FALSE),
+        top_annotation = column_ha,
+        right_annotation = row_ha,
+        heatmap_legend_param = list(title = "Log2(MS1 area)"),
+        cluster_rows = TRUE,
+        cluster_columns = TRUE,
+        show_column_names = FALSE,
+        row_names_gp = gpar(fontsize = 10))
+dev.off()
+
+# PCA
+p <- pca(na.omit(assay(obj.filter, "MS1.total.log2")),
+         metadata = colData(obj.filter),
+         center = TRUE, 
+         scale = TRUE)
+
+screeplot(p)
+
+pdf("MS1.total.log2_eigencor.pdf",
+    width = 5,
+    height = 5)
+eigencorplot(p,
+             main = "Principle component correlations",
+             cexMain = 1.5,
+             metavars = c("replicate", "date", "run_id", "multiplier", "condition"),
+             col = viridis(100),
+             colCorval = 'firebrick',
+             fontCorval = 2,
+             cexCorval = 0.5,
+             rotLabX = 45,
+             posColKey = 'top')
+dev.off()
+
+pdf("MS1.total.log2_replicate_pca.pdf",
+    width = 5,
+    height = 5)
+biplot(p,
+       colby = "replicate", 
+       shape = "multiplier",
+       legendPosition = 'right',
+       hline = 0, 
+       vline = 0,
+       gridlines.major = FALSE, 
+       gridlines.minor = FALSE,
+       lab = NULL)
+dev.off()
+
+pdf("MS1.total.log2_condition_pca.pdf",
+    width = 5,
+    height = 5)
+biplot(p,
+       colby = "condition", 
+       shape = "multiplier",
+       legendPosition = 'right',
+       hline = 0, 
+       vline = 0,
+       gridlines.major = FALSE, 
+       gridlines.minor = FALSE,
+       lab = NULL)
+dev.off()
+```
+
+### MS2
+```{r}
+dir.create("/Users/ronaldcutler/Dropbox\ (EinsteinMed)/Sidoli-lab/Projects/Single-cell-histone/Analysis/4-normalization/nabut/normalization")
+setwd("/Users/ronaldcutler/Dropbox\ (EinsteinMed)/Sidoli-lab/Projects/Single-cell-histone/Analysis/4-normalization/nabut/normalization")
+
+# total abundance
+assays(obj.filter, withDimnames=FALSE)[["MS2.total.log2"]] <- assay(obj.filter, "MS2") %>%
+  map_df(~ .x / sum(.x)) %>%
+  map_df(~ log2(.x + 0.0001)) %>%
+  as.data.frame()
+
+# plot by cell
+df <- assay(obj.filter, "MS2.total.log2") %>% 
+  rownames_to_column("id") %>%
+  pivot_longer(
+    cols = -id, # This keeps the 'id' column fixed
+    names_to = "variable",
+    values_to = "value") %>%
+  merge(as.data.frame(colData(obj.filter)), by.x = "variable", by.y = "row.names")
+
+pdf("MS2.total.log2_distribution_cell.pdf",
+    width = 8,
+    height = 8)
+ggplot(df, aes(x = as.factor(run_id), y = value, fill = as.factor(replicate))) +
+  geom_boxplot(width = 0.7) +
+  theme_Publication() +
+  labs(title = "Cell #", x = "Run", y = "Log2(MS2 intensity)", fill = "Replicate") +
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1, size = 10)) +
+  facet_wrap(.~as.factor(multiplier), scales = "free_x", nrow = 2)
+dev.off()
+
+# plot by peptide
+pdf("MS2.total.log2_distribution_peptide.pdf",
+    width = 15,
+    height = 10)
+ggplot(df, aes(x = id, y = value)) +
+  geom_boxplot() +
+  theme_Publication() +
+  labs(title = "Cell #", x = "Peptide", y = "Log2(MS2 intensity)", fill = "Replicate") +
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1, size = 10)) +
+  facet_wrap(.~as.factor(multiplier), scales = "free_x")
+dev.off()
+
+# heatmap
+column_ha = HeatmapAnnotation(replicate = as.factor(obj.filter$replicate),
+                              cell_number = as.factor(obj.filter$multiplier),
+                              condition = as.factor(obj.filter$condition))
+row_ha = rowAnnotation(charge = anno_barplot(rowData(obj.filter)$Precursor.Charge))
+
+pdf("MS2.total.log2_heatmap.pdf",
+    width = 10,
+    height = 10)
+set.seed(123)
+Heatmap(scale(assay(obj.filter, "MS2.total.log2"), center = FALSE, scale = FALSE),
+        top_annotation = column_ha,
+        right_annotation = row_ha,
+        heatmap_legend_param = list(title = "Log2(MS2 area)"),
+        cluster_rows = TRUE,
+        cluster_columns = TRUE,
+        show_column_names = FALSE,
+        row_names_gp = gpar(fontsize = 10))
+dev.off()
+
+# PCA
+p <- pca(na.omit(assay(obj.filter, "MS2.total.log2")),
+         metadata = colData(obj.filter),
+         center = TRUE, 
+         scale = TRUE)
+
+screeplot(p)
+
+pdf("MS2.total.log2_eigencor.pdf",
+    width = 5,
+    height = 5)
+eigencorplot(p,
+             main = "Principle component correlations",
+             cexMain = 1.5,
+             metavars = c("replicate", "date", "run_id", "multiplier", "condition"),
+             col = viridis(100),
+             colCorval = 'firebrick',
+             fontCorval = 2,
+             cexCorval = 0.5,
+             rotLabX = 45,
+             posColKey = 'top')
+dev.off()
+
+pdf("MS2.total.log2_replicate_pca.pdf",
+    width = 5,
+    height = 5)
+biplot(p,
+       colby = "replicate", 
+       shape = "multiplier",
+       legendPosition = 'right',
+       hline = 0, 
+       vline = 0,
+       gridlines.major = FALSE, 
+       gridlines.minor = FALSE,
+       lab = NULL)
+dev.off()
+
+pdf("MS2.total.log2_condition_pca.pdf",
+    width = 5,
+    height = 5)
+biplot(p,
+       colby = "condition", 
+       shape = "multiplier",
+       legendPosition = 'right',
+       hline = 0, 
+       vline = 0,
+       gridlines.major = FALSE, 
+       gridlines.minor = FALSE,
+       lab = NULL)
+dev.off()
+```
+
+### Save object
+```{r}
+setwd("/Users/ronaldcutler/Dropbox\ (EinsteinMed)/Sidoli-lab/Projects/Single-cell-histone/Analysis/4-normalization/nabut")
+
+saveRDS(obj.filter, "obj.filter.RDS")
+```
+
+## Median center
+
+### MS1
+```{r}
+dir.create("/Users/ronaldcutler/Dropbox\ (EinsteinMed)/Sidoli-lab/Projects/Single-cell-histone/Analysis/4-normalization/nabut/normalization")
+setwd("/Users/ronaldcutler/Dropbox\ (EinsteinMed)/Sidoli-lab/Projects/Single-cell-histone/Analysis/4-normalization/nabut/normalization")
+
+# median center
+assays(obj.filter)[["MS1.log2.center"]] <- sweep(assay(obj.filter, "MS1.log2"), 2, apply(assay(obj.filter, "MS1.log2"), 2, function(x) median(x, na.rm = TRUE)), FUN = "-")
+
+# plot by cell
+df <- assay(obj.filter, "MS1.log2.center") %>% 
+  rownames_to_column("id") %>%
+  pivot_longer(
+    cols = -id, # This keeps the 'id' column fixed
+    names_to = "variable",
+    values_to = "value") %>%
+  merge(as.data.frame(colData(obj.filter)), by.x = "variable", by.y = "row.names")
+
+pdf("MS1.log2.center_distribution_cell.pdf",
+    width = 8,
+    height = 8)
+ggplot(df, aes(x = as.factor(run_id), y = value, fill = as.factor(replicate))) +
+  geom_boxplot(width = 0.7) +
+  theme_Publication() +
+  labs(title = "Cell #", x = "Run", y = "Log2(MS1 intensity)", fill = "Replicate") +
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1, size = 10)) +
+  facet_wrap(.~as.factor(multiplier), scales = "free_x", nrow = 2)
+dev.off()
+
+# plot by peptide
+pdf("MS1.log2.center_distribution_peptide.pdf",
+    width = 15,
+    height = 10)
+ggplot(df, aes(x = id, y = value)) +
+  geom_boxplot() +
+  theme_Publication() +
+  labs(title = "Cell #", x = "Peptide", y = "Log2(MS1 intensity)", fill = "Replicate") +
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1, size = 10)) +
+  facet_wrap(.~as.factor(multiplier), scales = "free_x")
+dev.off()
+
+# heatmap
+column_ha = HeatmapAnnotation(replicate = as.factor(obj.filter$replicate),
+                              cell_number = as.factor(obj.filter$multiplier),
+                              condition = as.factor(obj.filter$condition))
+row_ha = rowAnnotation(charge = anno_barplot(rowData(obj.filter)$Precursor.Charge))
+
+pdf("MS1.log2.center_heatmap.pdf",
+    width = 10,
+    height = 10)
+set.seed(123)
+Heatmap(scale(assay(obj.filter, "MS1.log2.center"), center = FALSE, scale = FALSE),
+        top_annotation = column_ha,
+        right_annotation = row_ha,
+        heatmap_legend_param = list(title = "Log2(MS1 area)"),
+        cluster_rows = TRUE,
+        cluster_columns = TRUE,
+        show_column_names = FALSE,
+        row_names_gp = gpar(fontsize = 10))
+dev.off()
+
+# PCA
+p <- pca(na.omit(assay(obj.filter, "MS1.log2.center")),
+         metadata = colData(obj.filter),
+         center = TRUE, 
+         scale = TRUE)
+
+screeplot(p)
+
+pdf("MS1.log2.center_eigencor.pdf",
+    width = 5,
+    height = 5)
+eigencorplot(p,
+             main = "Principle component correlations",
+             cexMain = 1.5,
+             metavars = c("replicate", "date", "run_id", "multiplier", "condition"),
+             col = viridis(100),
+             colCorval = 'firebrick',
+             fontCorval = 2,
+             cexCorval = 0.5,
+             rotLabX = 45,
+             posColKey = 'top')
+dev.off()
+
+pdf("MS1.log2.center_replicate_pca.pdf",
+    width = 5,
+    height = 5)
+biplot(p,
+       colby = "replicate", 
+       shape = "multiplier",
+       legendPosition = 'right',
+       hline = 0, 
+       vline = 0,
+       gridlines.major = FALSE, 
+       gridlines.minor = FALSE,
+       lab = NULL)
+dev.off()
+
+pdf("MS1.log2.center_condition_pca.pdf",
+    width = 5,
+    height = 5)
+biplot(p,
+       colby = "condition", 
+       shape = "multiplier",
+       legendPosition = 'right',
+       hline = 0, 
+       vline = 0,
+       gridlines.major = FALSE, 
+       gridlines.minor = FALSE,
+       lab = NULL)
+dev.off()
+```
+
+### MS2
+```{r}
+setwd("/Users/ronaldcutler/Dropbox\ (EinsteinMed)/Sidoli-lab/Projects/Single-cell-histone/Analysis/4-normalization/nabut/normalization")
+
+# median center
+assays(obj.filter)[["MS2.log2.center"]] <- sweep(assay(obj.filter, "MS2.log2"), 2, apply(assay(obj.filter, "MS2.log2"), 2, function(x) median(x, na.rm = TRUE)), FUN = "-")
+
+# plot by cell
+df <- assay(obj.filter, "MS2.log2.center") %>% 
+  rownames_to_column("id") %>%
+  pivot_longer(
+    cols = -id, # This keeps the 'id' column fixed
+    names_to = "variable",
+    values_to = "value") %>%
+  merge(as.data.frame(colData(obj.filter)), by.x = "variable", by.y = "row.names")
+
+pdf("MS2.log2.center_distribution_cell.pdf",
+    width = 8,
+    height = 8)
+ggplot(df, aes(x = as.factor(run_id), y = value, fill = as.factor(replicate))) +
+  geom_boxplot(width = 0.7) +
+  theme_Publication() +
+  labs(title = "Cell #", x = "Run", y = "Log2(MS2 intensity)", fill = "Replicate") +
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1, size = 10)) +
+  facet_wrap(.~as.factor(multiplier), scales = "free_x", nrow = 2)
+dev.off()
+
+# plot by peptide
+pdf("MS2.log2.center_distribution_peptide.pdf",
+    width = 15,
+    height = 10)
+ggplot(df, aes(x = id, y = value)) +
+  geom_boxplot() +
+  theme_Publication() +
+  labs(title = "Cell #", x = "Peptide", y = "Log2(MS2 intensity)", fill = "Replicate") +
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1, size = 10)) +
+  facet_wrap(.~as.factor(multiplier), scales = "free_x")
+dev.off()
+
+# heatmap
+column_ha = HeatmapAnnotation(replicate = as.factor(obj.filter$replicate),
+                              cell_number = as.factor(obj.filter$multiplier),
+                              condition = as.factor(obj.filter$condition))
+row_ha = rowAnnotation(charge = anno_barplot(rowData(obj.filter)$Precursor.Charge))
+
+pdf("MS2.log2_heatmap.pdf",
+    width = 10,
+    height = 10)
+set.seed(123)
+Heatmap(scale(assay(obj.filter, "MS2.log2.center"), center = FALSE, scale = FALSE),
+        top_annotation = column_ha,
+        right_annotation = row_ha,
+        heatmap_legend_param = list(title = "Log2(MS2 area)"),
+        cluster_rows = TRUE,
+        cluster_columns = TRUE,
+        show_column_names = FALSE,
+        row_names_gp = gpar(fontsize = 10))
+dev.off()
+
+# PCA
+p <- pca(na.omit(assay(obj.filter, "MS2.log2.center")),
+         metadata = colData(obj.filter),
+         center = TRUE, 
+         scale = TRUE)
+
+screeplot(p)
+
+pdf("MS2.log2_eigencor.pdf",
+    width = 5,
+    height = 5)
+eigencorplot(p,
+             main = "Principle component correlations",
+             cexMain = 1.5,
+             metavars = c("replicate", "date", "run_id", "multiplier", "condition"),
+             col = viridis(100),
+             colCorval = 'firebrick',
+             fontCorval = 2,
+             cexCorval = 0.5,
+             rotLabX = 45,
+             posColKey = 'top')
+dev.off()
+
+pdf("MS2.log2_replicate_pca.pdf",
+    width = 5,
+    height = 5)
+biplot(p,
+       colby = "replicate", 
+       shape = "multiplier",
+       legendPosition = 'right',
+       hline = 0, 
+       vline = 0,
+       gridlines.major = FALSE, 
+       gridlines.minor = FALSE,
+       lab = NULL)
+dev.off()
+
+pdf("MS2.log2_condition_pca.pdf",
+    width = 5,
+    height = 5)
+biplot(p,
+       colby = "condition", 
+       shape = "multiplier",
+       legendPosition = 'right',
+       hline = 0, 
+       vline = 0,
+       gridlines.major = FALSE, 
+       gridlines.minor = FALSE,
+       lab = NULL)
+dev.off()
+```
+
+### Save object
+```{r}
+setwd("/Users/ronaldcutler/Dropbox\ (EinsteinMed)/Sidoli-lab/Projects/Single-cell-histone/Analysis/4-normalization/nabut")
+
+saveRDS(obj.filter, "obj.filter.RDS")
+```
+
+## Peptide ratio
+- group all histones ptms from same peptide
+- filter out peptides which only have a single unmod/ptm
+- calculate ratio of each ptm to all of ptms with same peptide
+
+### MS1
+```{r}
+setwd("/Users/ronaldcutler/Dropbox\ (EinsteinMed)/Sidoli-lab/Projects/Single-cell-histone/Analysis/4-normalization/nabut/normalization")
+
+# Calculate MS1 ratio
+ratio.ms1 <- assay(obj.filter, "MS1") %>% 
+  rownames_to_column("Peptide.Note") %>%
+  pivot_longer(
+    cols = -Peptide.Note,
+    names_to = "Replicate.Name",
+    values_to = "value") %>%
+  merge(as.data.frame(colData(obj.filter)), by.x = "Replicate.Name", by.y = "row.names") %>%
+  merge(as.data.frame(rowData(obj.filter)), by.x = "Peptide.Note", by.y = "row.names") %>%
+  group_by(Peptide.Sequence, Replicate.Name) %>%
+  filter(n_distinct(Peptide.Note) >= 2) %>%
+  mutate(ratio = value / sum(value)) %>%
+  as.data.frame()
+
+pdf("MS1.ratio_cell.pdf",
+    width = 8,
+    height = 8)
+ggplot(ratio.ms1, aes(x = as.factor(run_id), y = ratio, fill = as.factor(replicate))) +
+  geom_boxplot(width = 0.7) +
+  theme_Publication() +
+  labs(title = "Cell #", x = "Run", y = "MS1 peptide ratio", fill = "Replicate") +
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1, size = 10)) +
+  facet_wrap(.~as.factor(multiplier), scales = "free_x", nrow = 2)
+dev.off()
+
+# verify that for each peptide all the mods add up to 1
+df.verify <- ratio.ms1 %>%
+      group_by(Peptide.Sequence, Replicate.Name) %>%
+      summarize(sum = sum(ratio))
+df.verify$sum
+```
+
+### MS2
+```{r}
+setwd("/Users/ronaldcutler/Dropbox\ (EinsteinMed)/Sidoli-lab/Projects/Single-cell-histone/Analysis/4-normalization/nabut/normalization")
+
+ratio.ms2 <- assay(obj.filter, "MS2") %>% 
+  rownames_to_column("Peptide.Note") %>%
+  pivot_longer(
+    cols = -Peptide.Note,
+    names_to = "Replicate.Name",
+    values_to = "value") %>%
+  merge(as.data.frame(colData(obj.filter)), by.x = "Replicate.Name", by.y = "row.names") %>%
+  merge(as.data.frame(rowData(obj.filter)), by.x = "Peptide.Note", by.y = "row.names") %>%
+  group_by(Peptide.Sequence, Replicate.Name) %>%
+  filter(n_distinct(Peptide.Note) >= 2) %>%
+  mutate(ratio = value / sum(value)) %>%
+  as.data.frame()
+
+pdf("MS2.ratio_cell.pdf",
+    width = 8,
+    height = 8)
+ggplot(ratio.ms2, aes(x = as.factor(run_id), y = ratio, fill = as.factor(replicate))) +
+  geom_boxplot(width = 0.7) +
+  theme_Publication() +
+  labs(title = "Cell #", x = "Run", y = "MS2 peptide ratio", fill = "Replicate") +
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1, size = 10)) +
+  facet_wrap(.~as.factor(multiplier), scales = "free_x", nrow = 2)
+dev.off()
+
+# verify that for each peptide all the mods add up to 1
+df.verify <- ratio.ms2 %>%
+      group_by(Peptide.Sequence, Replicate.Name) %>%
+      summarize(sum = sum(ratio))
+df.verify$sum
+```
+
+### New summarized experiment for ratios
+```{r}
+obj.filter.ratio <- load_ratio_summarized_experiment(ratio.ms1, ratio.ms2, obj.filter)
+```
+
+#### MS1 visualization
+```{r}
+setwd("/Users/ronaldcutler/Dropbox\ (EinsteinMed)/Sidoli-lab/Projects/Single-cell-histone/Analysis/4-normalization/nabut/normalization")
+
+# heatmap
+column_ha = HeatmapAnnotation(replicate = as.factor(obj.filter.ratio$replicate),
+                              cell_number = as.factor(obj.filter.ratio$multiplier),
+                              condition = as.factor(obj.filter.ratio$condition))
+row_ha = rowAnnotation(charge = anno_barplot(rowData(obj.filter.ratio)$Precursor.Charge))
+
+pdf("MS1.ratio_heatmap.pdf",
+    width = 10,
+    height = 10)
+set.seed(123)
+Heatmap(scale(assay(obj.filter.ratio, "MS1.ratio"), center = FALSE, scale = FALSE),
+        top_annotation = column_ha,
+        right_annotation = row_ha,
+        heatmap_legend_param = list(title = "MS1 Peptide Ratio"),
+        cluster_rows = TRUE,
+        cluster_columns = TRUE,
+        show_column_names = FALSE,
+        row_names_gp = gpar(fontsize = 10))
+dev.off()
+
+# PCA
+p <- pca(na.omit(assay(obj.filter.ratio, "MS1.ratio")),
+         metadata = colData(obj.filter.ratio),
+         center = TRUE, 
+         scale = TRUE)
+
+pdf("MS1.ratio_screeplot.pdf",
+    width = 5,
+    height = 5)
+screeplot(p,
+          components = getComponents(p)[1:10])
+dev.off()
+
+pdf("MS1.ratio_eigencor.pdf",
+    width = 5,
+    height = 5)
+eigencorplot(p,
+             main = "Principle component correlations",
+             cexMain = 1.5,
+             metavars = c("replicate", "date", "run_id", "multiplier", "condition"),
+             col = viridis(100),
+             colCorval = 'firebrick',
+             fontCorval = 2,
+             cexCorval = 0.5,
+             rotLabX = 45,
+             posColKey = 'top')
+dev.off()
+
+pdf("MS1.ratio_replicate_pca.pdf",
+    width = 4,
+    height = 5)
+biplot(p,
+       colby = "replicate", 
+       shape = "multiplier",
+       legendPosition = 'top',
+       hline = 0, 
+       vline = 0) +
+  labs(color = "Replicate",
+       shape = "# Cells") +
+  theme_Publication() +
+  theme(legend.box="vertical", 
+        legend.margin=margin())
+dev.off()
+
+pdf("MS1.ratio_condition_pca.pdf",
+    width = 4,
+    height = 5)
+biplot(p,
+       colby = "condition", 
+       shape = "replicate",
+       legendPosition = 'top',
+       hline = 0, 
+       vline = 0,
+       lab = NULL) +
+  labs(color = "Condition",
+       shape = "Replicate") +
+  theme_Publication() +
+  theme(legend.box="vertical", 
+        legend.margin=margin())
+dev.off()
+```
+
+#### MS2 visualization
+```{r}
+# heatmap
+column_ha = HeatmapAnnotation(replicate = as.factor(obj.filter.ratio$replicate),
+                              cell_number = as.factor(obj.filter.ratio$multiplier),
+                              condition = as.factor(obj.filter.ratio$condition))
+row_ha = rowAnnotation(charge = anno_barplot(rowData(obj.filter.ratio)$Precursor.Charge))
+
+pdf("MS2.ratio_heatmap.pdf",
+    width = 10,
+    height = 10)
+set.seed(123)
+Heatmap(scale(assay(obj.filter.ratio, "MS2.ratio"), center = FALSE, scale = FALSE),
+        top_annotation = column_ha,
+        right_annotation = row_ha,
+        heatmap_legend_param = list(title = "MS2 Peptide Ratio"),
+        cluster_rows = TRUE,
+        cluster_columns = TRUE,
+        show_column_names = FALSE,
+        row_names_gp = gpar(fontsize = 10))
+dev.off()
+
+# PCA
+p <- pca(na.omit(assay(obj.filter.ratio, "MS2.ratio")),
+         metadata = colData(obj.filter.ratio),
+         center = TRUE, 
+         scale = TRUE)
+
+pdf("MS2.ratio_screeplot.pdf",
+    width = 5,
+    height = 5)
+screeplot(p,
+          components = getComponents(p)[1:10])
+dev.off()
+
+pdf("MS2.ratio_eigencor.pdf",
+    width = 5,
+    height = 5)
+eigencorplot(p,
+             main = "Principle component correlations",
+             cexMain = 1.5,
+             metavars = c("replicate", "date", "run_id", "multiplier", "condition"),
+             col = viridis(100),
+             colCorval = 'firebrick',
+             fontCorval = 2,
+             cexCorval = 0.5,
+             rotLabX = 45,
+             posColKey = 'top')
+dev.off()
+
+pdf("MS2.ratio_replicate_pca.pdf",
+    width = 4,
+    height = 5)
+biplot(p,
+       colby = "replicate", 
+       shape = "multiplier",
+       legendPosition = 'top',
+       hline = 0, 
+       vline = 0,
+       lab = NULL) +
+  labs(color = "Replicate",
+       shape = "# Cells") +
+  theme_Publication() +
+  theme(legend.box="vertical", 
+        legend.margin=margin())
+dev.off()
+
+pdf("MS2.ratio_condition_pca.pdf",
+    width = 4,
+    height = 5)
+biplot(p,
+       colby = "condition", 
+       shape = "replicate",
+       legendPosition = 'top',
+       hline = 0, 
+       vline = 0,
+       lab = NULL) +
+  labs(color = "Condition",
+       shape = "Replicate") +
+  theme_Publication() +
+  theme(legend.box="vertical", 
+        legend.margin=margin())
+dev.off()
+```
+
+#### Global ratios
+```{r}
+## me1
+obj.filter.ratio$global_me <- assay(obj.filter.ratio, "MS1.ratio") %>%
+  filter(grepl("\\bme\\b", rownames(obj.filter.ratio))) %>%
+  colSums()
+
+## me2
+obj.filter.ratio$global_me2 <- assay(obj.filter.ratio, "MS1.ratio") %>%
+  filter(grepl("\\bme2\\b", rownames(obj.filter.ratio))) %>%
+  colSums()
+
+## me3
+obj.filter.ratio$global_me3 <- assay(obj.filter.ratio, "MS1.ratio") %>%
+  filter(grepl("\\bme3\\b", rownames(obj.filter.ratio))) %>%
+  colSums()
+
+## ac
+obj.filter.ratio$global_ac <- assay(obj.filter.ratio, "MS1.ratio") %>%
+  filter(grepl("\\bac\\b", rownames(obj.filter.ratio))) %>%
+  colSums()
+
+# visualize
+obj.filter.ratio.global <- colData(obj.filter.ratio)[,c("global_me", "global_me2", "global_me3", "global_ac")]
+
+# heatmap
+column_ha = HeatmapAnnotation(replicate = as.factor(obj.filter.ratio$replicate),
+                              cell_number = as.factor(obj.filter.ratio$multiplier),
+                              condition = as.factor(obj.filter.ratio$condition))
+
+pdf("MS1.global.ratio_heatmap.pdf",
+    width = 5,
+    height = 3)
+set.seed(123)
+Heatmap(as.matrix(t(obj.filter.ratio.global)),
+        top_annotation = column_ha,
+        heatmap_legend_param = list(title = "Total PTM abundance"),
+        cluster_rows = FALSE,
+        cluster_columns = TRUE,
+        show_column_names = FALSE,
+        show_row_names = TRUE,
+        row_names_gp = gpar(fontsize = 10))
+dev.off()
+
+# PCA
+p <- pca(as.matrix(t(obj.filter.ratio.global)),
+         metadata = colData(obj.filter.ratio),
+         center = TRUE, 
+         scale = TRUE)
+
+pdf("MS1.global.ratio_eigencor.pdf",
+    width = 5,
+    height = 5)
+eigencorplot(p,
+             components = getComponents(p, seq_len(4)),
+             main = "Principle component correlations",
+             cexMain = 1.5,
+             metavars = c("replicate", "date", "run_id", "multiplier", "condition"),
+             col = viridis(100),
+             colCorval = 'firebrick',
+             fontCorval = 2,
+             cexCorval = 0.5,
+             rotLabX = 45,
+             posColKey = 'top')
+dev.off()
+
+pdf("MS1.global.ratio_replicate_pca.pdf",
+    width = 4,
+    height = 5)
+biplot(p,
+       colby = "replicate", 
+       shape = "multiplier",
+       legendPosition = 'top',
+       hline = 0, 
+       vline = 0,
+       lab = NULL) +
+  labs(color = "Replicate",
+       shape = "# Cells") +
+  theme_Publication() +
+  theme(legend.box="vertical", 
+        legend.margin=margin())
+dev.off()
+
+pdf("MS1.global.ratio_condition_pca.pdf",
+    width = 4,
+    height = 5)
+biplot(p,
+       colby = "condition", 
+       shape = "replicate",
+       legendPosition = 'top',
+       hline = 0, 
+       vline = 0,
+       lab = NULL) +
+  labs(color = "Condition",
+       shape = "Replicate") +
+  theme_Publication() +
+  theme(legend.box="vertical", 
+        legend.margin=margin())
+dev.off()
+```
+
+#### Filter outlier samples
+- These samples have odd ratios as seen on the PCA and heatmap
+- They are all next to each other for the runs so perhaps something went wrong here
+```{r}
+obj.filter.ratio <- obj.filter.ratio[,!obj.filter.ratio$run_id %in% c(3720:3723)]
+```
+
+#### MS1 visualization
+```{r}
+# heatmap
+column_ha = HeatmapAnnotation(replicate = as.factor(obj.filter.ratio$replicate),
+                              cell_number = as.factor(obj.filter.ratio$multiplier),
+                              condition = as.factor(obj.filter.ratio$condition))
+row_ha = rowAnnotation(charge = anno_barplot(rowData(obj.filter.ratio)$Precursor.Charge))
+
+pdf("MS1.ratio_filtered_heatmap.pdf",
+    width = 10,
+    height = 10)
+set.seed(123)
+Heatmap(scale(assay(obj.filter.ratio, "MS1.ratio"), center = FALSE, scale = FALSE),
+        top_annotation = column_ha,
+        right_annotation = row_ha,
+        heatmap_legend_param = list(title = "MS1 Peptide Ratio"),
+        cluster_rows = TRUE,
+        cluster_columns = TRUE,
+        show_column_names = FALSE,
+        row_names_gp = gpar(fontsize = 10))
+dev.off()
+
+# PCA
+p <- pca(na.omit(assay(obj.filter.ratio, "MS1.ratio")),
+         metadata = colData(obj.filter.ratio),
+         center = TRUE, 
+         scale = TRUE)
+
+pdf("MS1.ratio_filtered_screeplot.pdf",
+    width = 5,
+    height = 5)
+screeplot(p,
+          components = getComponents(p)[1:10])
+dev.off()
+
+pdf("MS1.ratio_filtered_eigencor.pdf",
+    width = 5,
+    height = 5)
+eigencorplot(p,
+             main = "Principle component correlations",
+             cexMain = 1.5,
+             metavars = c("replicate", "date", "run_id", "multiplier", "condition"),
+             col = viridis(100),
+             colCorval = 'firebrick',
+             fontCorval = 2,
+             cexCorval = 0.5,
+             rotLabX = 45,
+             posColKey = 'top')
+dev.off()
+
+pdf("MS1.ratio_filtered_replicate_pca.pdf",
+    width = 4,
+    height = 5)
+biplot(p,
+       colby = "replicate", 
+       shape = "multiplier",
+       legendPosition = 'top',
+       hline = 0, 
+       vline = 0,
+       lab = NULL) +
+  labs(color = "Replicate",
+       shape = "# Cells") +
+  theme_Publication() +
+  theme(legend.box="vertical", 
+        legend.margin=margin())
+dev.off()
+
+pdf("MS1.ratio_filtered_condition_pca.pdf",
+    width = 4,
+    height = 5)
+biplot(p,
+       colby = "condition", 
+       shape = "replicate",
+       legendPosition = 'top',
+       hline = 0, 
+       vline = 0,
+       lab = NULL) +
+  labs(color = "Condition",
+       shape = "Replicate") +
+  theme_Publication() +
+  theme(legend.box="vertical", 
+        legend.margin=margin())
+dev.off()
+```
+
+#### MS2 visualization
+```{r}
+# heatmap
+column_ha = HeatmapAnnotation(replicate = as.factor(obj.filter.ratio$replicate),
+                              cell_number = as.factor(obj.filter.ratio$multiplier),
+                              condition = as.factor(obj.filter.ratio$condition))
+row_ha = rowAnnotation(charge = anno_barplot(rowData(obj.filter.ratio)$Precursor.Charge))
+
+pdf("MS2.ratio_filtered_heatmap.pdf",
+    width = 10,
+    height = 10)
+set.seed(123)
+Heatmap(scale(assay(obj.filter.ratio, "MS2.ratio"), center = FALSE, scale = FALSE),
+        top_annotation = column_ha,
+        right_annotation = row_ha,
+        heatmap_legend_param = list(title = "MS2 Peptide Ratio"),
+        cluster_rows = TRUE,
+        cluster_columns = TRUE,
+        show_column_names = FALSE,
+        row_names_gp = gpar(fontsize = 10))
+dev.off()
+
+# PCA
+p <- pca(na.omit(assay(obj.filter.ratio, "MS2.ratio")),
+         metadata = colData(obj.filter.ratio),
+         center = TRUE, 
+         scale = TRUE)
+
+pdf("MS2.ratio_filtered_screeplot.pdf",
+    width = 5,
+    height = 5)
+screeplot(p,
+          components = getComponents(p)[1:10])
+dev.off()
+
+pdf("MS2.ratio_filtered_eigencor.pdf",
+    width = 5,
+    height = 5)
+eigencorplot(p,
+             main = "Principle component correlations",
+             cexMain = 1.5,
+             metavars = c("replicate", "date", "run_id", "multiplier", "condition"),
+             col = viridis(100),
+             colCorval = 'firebrick',
+             fontCorval = 2,
+             cexCorval = 0.5,
+             rotLabX = 45,
+             posColKey = 'top')
+dev.off()
+
+pdf("MS2.ratio_filtered_replicate_pca.pdf",
+    width = 4,
+    height = 5)
+biplot(p,
+       colby = "replicate", 
+       shape = "multiplier",
+       legendPosition = 'top',
+       hline = 0, 
+       vline = 0,
+       lab = NULL) +
+  labs(color = "Replicate",
+       shape = "# Cells") +
+  theme_Publication() +
+  theme(legend.box="vertical", 
+        legend.margin=margin())
+dev.off()
+
+pdf("MS2.ratio_filtered_condition_pca.pdf",
+    width = 4,
+    height = 5)
+biplot(p,
+       colby = "condition", 
+       shape = "replicate",
+       legendPosition = 'top',
+       hline = 0, 
+       vline = 0,
+       lab = NULL) +
+  labs(color = "Condition",
+       shape = "Replicate") +
+  theme_Publication() +
+  theme(legend.box="vertical", 
+        legend.margin=margin())
+dev.off()
+```
+
+#### Global ratios
+```{r}
+## me1
+obj.filter.ratio$global_me <- assay(obj.filter.ratio, "MS1.ratio") %>%
+  filter(grepl("\\bme\\b", rownames(obj.filter.ratio))) %>%
+  colSums()
+
+## me2
+obj.filter.ratio$global_me2 <- assay(obj.filter.ratio, "MS1.ratio") %>%
+  filter(grepl("\\bme2\\b", rownames(obj.filter.ratio))) %>%
+  colSums()
+
+## me3
+obj.filter.ratio$global_me3 <- assay(obj.filter.ratio, "MS1.ratio") %>%
+  filter(grepl("\\bme3\\b", rownames(obj.filter.ratio))) %>%
+  colSums()
+
+## ac
+obj.filter.ratio$global_ac <- assay(obj.filter.ratio, "MS1.ratio") %>%
+  filter(grepl("\\bac\\b", rownames(obj.filter.ratio))) %>%
+  colSums()
+
+# visualize
+obj.filter.ratio.global <- colData(obj.filter.ratio)[,c("global_me", "global_me2", "global_me3", "global_ac")]
+
+# heatmap
+column_ha = HeatmapAnnotation(replicate = as.factor(obj.filter.ratio$replicate),
+                              cell_number = as.factor(obj.filter.ratio$multiplier),
+                              condition = as.factor(obj.filter.ratio$condition))
+
+pdf("MS1.global.ratio_filtered_heatmap.pdf",
+    width = 5,
+    height = 3)
+set.seed(123)
+Heatmap(as.matrix(t(obj.filter.ratio.global)),
+        top_annotation = column_ha,
+        heatmap_legend_param = list(title = "Total PTM abundance"),
+        cluster_rows = FALSE,
+        cluster_columns = TRUE,
+        show_column_names = FALSE,
+        show_row_names = TRUE,
+        row_names_gp = gpar(fontsize = 10))
+dev.off()
+
+# PCA
+p <- pca(as.matrix(t(obj.filter.ratio.global)),
+         metadata = colData(obj.filter.ratio),
+         center = TRUE, 
+         scale = TRUE)
+
+pdf("MS1.global.ratio_filtered_eigencor.pdf",
+    width = 5,
+    height = 5)
+eigencorplot(p,
+             components = getComponents(p, seq_len(4)),
+             main = "Principle component correlations",
+             cexMain = 1.5,
+             metavars = c("replicate", "date", "run_id", "multiplier", "condition"),
+             col = viridis(100),
+             colCorval = 'firebrick',
+             fontCorval = 2,
+             cexCorval = 0.5,
+             rotLabX = 45,
+             posColKey = 'top')
+dev.off()
+
+pdf("MS1.global.ratio_filtered_replicate_pca.pdf",
+    width = 4,
+    height = 5)
+biplot(p,
+       colby = "replicate", 
+       shape = "multiplier",
+       legendPosition = 'top',
+       hline = 0, 
+       vline = 0,
+       lab = NULL) +
+  labs(color = "Replicate",
+       shape = "# Cells") +
+  theme_Publication() +
+  theme(legend.box="vertical", 
+        legend.margin=margin())
+dev.off()
+
+pdf("MS1.global.ratio_filtered_condition_pca.pdf",
+    width = 4,
+    height = 5)
+biplot(p,
+       colby = "condition", 
+       shape = "replicate",
+       legendPosition = 'top',
+       hline = 0, 
+       vline = 0,
+       lab = NULL) +
+  labs(color = "Condition",
+       shape = "Replicate") +
+  theme_Publication() +
+  theme(legend.box="vertical", 
+        legend.margin=margin())
+dev.off()
+```
+
+### Save object
+```{r}
+setwd("/Users/ronaldcutler/Dropbox\ (EinsteinMed)/Sidoli-lab/Projects/Single-cell-histone/Analysis/4-normalization/nabut")
+
+saveRDS(obj.filter.ratio, "obj.filter.ratio.RDS")
+```
+
+# Batch correction
+
+## Total abundance
+
+### MS1
+```{r}
+dir.create("/Users/ronaldcutler/Dropbox\ (EinsteinMed)/Sidoli-lab/Projects/Single-cell-histone/Analysis/4-normalization/nabut/batchqc")
+setwd("/Users/ronaldcutler/Dropbox\ (EinsteinMed)/Sidoli-lab/Projects/Single-cell-histone/Analysis/4-normalization/nabut/batchqc")
+
+# assess batch effects
+# batchQC(assay(obj.filter, "MS1.total.log2"), obj.filter$replicate, as.integer(obj.filter$condition),
+#         report_file="MS1.total.log2.no-correction.html", report_dir=".",
+#         report_option_binary="111111111",
+#         view_report=FALSE, interactive=FALSE, batchqc_output=FALSE)
+
+# correct batch using combat
+# keeping the number of cells and condition be variables of interest
+pdata <- data.frame(multiplier = as.integer(obj.filter$multiplier), condition = as.integer(obj.filter$condition))
+modmatrix <- model.matrix(~multiplier + condition, data = pdata)
+assays(obj.filter, withDimnames = FALSE)[["MS1.total.log2.combat"]] <- as.data.frame(ComBat(dat = assay(obj.filter, "MS1.total.log2"),
+                                                                                     batch = obj.filter$replicate,
+                                                                                     mod = modmatrix,
+                                                                                     ref.batch = 2))
+
+# assess correction
+# batchQC(assay(obj.filter, "MS1.total.log2.combat"), obj.filter$replicate, as.integer(obj.filter$condition),
+#         report_file="MS1.total.log2.correction.html", report_dir=".",
+#         report_option_binary="111111111",
+#         view_report=FALSE, interactive=FALSE, batchqc_output=FALSE)
+
+# heatmap
+dir.create("/Users/ronaldcutler/Dropbox\ (EinsteinMed)/Sidoli-lab/Projects/Single-cell-histone/Analysis/4-normalization/nabut/batch-corrected")
+setwd("/Users/ronaldcutler/Dropbox\ (EinsteinMed)/Sidoli-lab/Projects/Single-cell-histone/Analysis/4-normalization/nabut/batch-corrected")
+
+# heatmap
+column_ha = HeatmapAnnotation(replicate = as.factor(obj.filter$replicate),
+                              cell_number = as.factor(obj.filter$multiplier),
+                              condition = as.factor(obj.filter$condition))
+row_ha = rowAnnotation(charge = anno_barplot(rowData(obj.filter)$Precursor.Charge))
+
+pdf("MS1.total.log2.combat_heatmap.pdf",
+    width = 10,
+    height = 10)
+set.seed(123)
+Heatmap(scale(assay(obj.filter, "MS1.total.log2.combat"), center = FALSE, scale = FALSE),
+        top_annotation = column_ha,
+        right_annotation = row_ha,
+        heatmap_legend_param = list(title = "Log2(MS2 area)"),
+        cluster_rows = TRUE,
+        cluster_columns = TRUE,
+        show_column_names = FALSE,
+        row_names_gp = gpar(fontsize = 10))
+dev.off()
+
+# PCA
+p <- pca(na.omit(assay(obj.filter, "MS1.total.log2.combat")),
+         metadata = colData(obj.filter),
+         center = TRUE, 
+         scale = TRUE)
+
+screeplot(p)
+
+pdf("MS1.total.log2.combat_eigencor.pdf",
+    width = 5,
+    height = 5)
+eigencorplot(p,
+             main = "Principle component correlations",
+             cexMain = 1.5,
+             metavars = c("replicate", "date", "run_id", "multiplier", "condition"),
+             col = viridis(100),
+             colCorval = 'firebrick',
+             fontCorval = 2,
+             cexCorval = 0.5,
+             rotLabX = 45,
+             posColKey = 'top')
+dev.off()
+
+pdf("MS1.total.log2.combat_replicate_pca.pdf",
+    width = 5,
+    height = 5)
+biplot(p,
+       colby = "replicate", 
+       shape = "multiplier",
+       legendPosition = 'right',
+       hline = 0, 
+       vline = 0,
+       gridlines.major = FALSE, 
+       gridlines.minor = FALSE,
+       lab = NULL)
+dev.off()
+
+pdf("MS1.total.log2.combat_condition_pca.pdf",
+    width = 5,
+    height = 5)
+biplot(p,
+       colby = "condition", 
+       shape = "multiplier",
+       legendPosition = 'right',
+       hline = 0, 
+       vline = 0,
+       gridlines.major = FALSE, 
+       gridlines.minor = FALSE,
+       lab = NULL)
+dev.off()
+```
+
+### MS2
+```{r}
+setwd("/Users/ronaldcutler/Dropbox\ (EinsteinMed)/Sidoli-lab/Projects/Single-cell-histone/Analysis/4-normalization/nabut/batchqc")
+
+# assess batch effects
+# batchQC(assay(obj.filter, "MS2.total.log2"), obj.filter$replicate, as.integer(obj.filter$condition),
+#         report_file="MS2.total.log2.no-correction.html", report_dir=".",
+#         report_option_binary="111111111",
+#         view_report=FALSE, interactive=FALSE, batchqc_output=FALSE)
+
+# correct batch using combat
+# keeping the number of cells and condition be variables of interest
+pdata <- data.frame(multiplier = as.integer(obj.filter$multiplier), condition = as.integer(obj.filter$condition))
+modmatrix <- model.matrix(~multiplier + condition, data = pdata)
+assays(obj.filter, withDimnames = FALSE)[["MS2.total.log2.combat"]] <- as.data.frame(ComBat(dat = assay(obj.filter, "MS2.total.log2"),
+                                                                                     batch = obj.filter$replicate,
+                                                                                     mod = modmatrix,
+                                                                                     ref.batch = 2))
+
+# assess correction
+# batchQC(assay(obj.filter, "MS2.total.log2.combat"), obj.filter$replicate, as.integer(obj.filter$condition),
+#         report_file="MS2.total.log2.correction.html", report_dir=".",
+#         report_option_binary="111111111",
+#         view_report=FALSE, interactive=FALSE, batchqc_output=FALSE)
+
+# heatmap
+setwd("/Users/ronaldcutler/Dropbox\ (EinsteinMed)/Sidoli-lab/Projects/Single-cell-histone/Analysis/4-normalization/nabut/batch-corrected")
+
+# heatmap
+column_ha = HeatmapAnnotation(replicate = as.factor(obj.filter$replicate),
+                              cell_number = as.factor(obj.filter$multiplier),
+                              condition = as.factor(obj.filter$condition))
+row_ha = rowAnnotation(charge = anno_barplot(rowData(obj.filter)$Precursor.Charge))
+
+pdf("MS2.total.log2.combat_heatmap.pdf",
+    width = 10,
+    height = 10)
+set.seed(123)
+Heatmap(scale(assay(obj.filter, "MS2.total.log2.combat"), center = FALSE, scale = FALSE),
+        top_annotation = column_ha,
+        right_annotation = row_ha,
+        heatmap_legend_param = list(title = "Log2(MS2 area)"),
+        cluster_rows = TRUE,
+        cluster_columns = TRUE,
+        show_column_names = FALSE,
+        row_names_gp = gpar(fontsize = 10))
+dev.off()
+
+# PCA
+data <- assay(obj.filter, "MS2.total.log2.combat")
+data[data == 0] <- NA
+p <- pca(na.omit(data),
+         metadata = colData(obj.filter),
+         center = TRUE, 
+         scale = TRUE)
+
+screeplot(p)
+
+pdf("MS2.total.log2.combat_eigencor.pdf",
+    width = 5,
+    height = 5)
+eigencorplot(p,
+             main = "Principle component correlations",
+             cexMain = 1.5,
+             metavars = c("replicate", "date", "run_id", "multiplier", "condition"),
+             col = viridis(100),
+             colCorval = 'firebrick',
+             fontCorval = 2,
+             cexCorval = 0.5,
+             rotLabX = 45,
+             posColKey = 'top')
+dev.off()
+
+pdf("MS2.total.log2.combat_replicate_pca.pdf",
+    width = 5,
+    height = 5)
+biplot(p,
+       colby = "replicate", 
+       shape = "multiplier",
+       legendPosition = 'right',
+       hline = 0, 
+       vline = 0,
+       gridlines.major = FALSE, 
+       gridlines.minor = FALSE,
+       lab = NULL)
+dev.off()
+
+pdf("MS2.total.log2.combat_condition_pca.pdf",
+    width = 5,
+    height = 5)
+biplot(p,
+       colby = "condition", 
+       shape = "multiplier",
+       legendPosition = 'right',
+       hline = 0, 
+       vline = 0,
+       gridlines.major = FALSE, 
+       gridlines.minor = FALSE,
+       lab = NULL)
+dev.off()
+```
+
+### Save object
+```{r}
+setwd("/Users/ronaldcutler/Dropbox\ (EinsteinMed)/Sidoli-lab/Projects/Single-cell-histone/Analysis/4-normalization/nabut")
+
+saveRDS(obj.filter, "obj.filter.RDS")
+```
+
+### Output normalized intensities
+```{r}
+dir.create("/Users/ronaldcutler/Dropbox\ (EinsteinMed)/Sidoli-lab/Projects/Single-cell-histone/Analysis/4-normalization/nabut/tables")
+setwd("/Users/ronaldcutler/Dropbox\ (EinsteinMed)/Sidoli-lab/Projects/Single-cell-histone/Analysis/4-normalization/nabut/tables")
+
+write.csv(assay(obj.filter, "MS1.total.log2.combat"), "MS1.total.log2.combat.csv")
+```
+
+## Median center
+
+### MS1
+```{r}
+dir.create("/Users/ronaldcutler/Dropbox\ (EinsteinMed)/Sidoli-lab/Projects/Single-cell-histone/Analysis/4-normalization/nabut/batchqc")
+setwd("/Users/ronaldcutler/Dropbox\ (EinsteinMed)/Sidoli-lab/Projects/Single-cell-histone/Analysis/4-normalization/nabut/batchqc")
+
+# assess batch effects
+# batchQC(assay(obj.filter, "MS1.log2.center"), obj.filter$replicate, as.integer(obj.filter$condition),
+#         report_file="MS1.log2.center.no-correction.html", report_dir=".",
+#         report_option_binary="111111111",
+#         view_report=FALSE, interactive=FALSE, batchqc_output=FALSE)
+
+# correct batch using combat
+# keeping the number of cells and condition be variables of interest
+pdata <- data.frame(multiplier = as.integer(obj.filter$multiplier), condition = as.integer(obj.filter$condition))
+modmatrix <- model.matrix(~multiplier + condition, data = pdata)
+assays(obj.filter, withDimnames = FALSE)[["MS1.log2.center.combat"]] <- as.data.frame(ComBat(dat = assay(obj.filter, "MS1.log2.center"),
+                                                                                     batch = obj.filter$replicate,
+                                                                                     mod = modmatrix,
+                                                                                     ref.batch = 2))
+
+# assess correction
+# batchQC(assay(obj.filter, "MS1.log2.center.combat"), obj.filter$replicate, as.integer(obj.filter$condition),
+#         report_file="MS1.log2.center.correction.html", report_dir=".",
+#         report_option_binary="111111111",
+#         view_report=FALSE, interactive=FALSE, batchqc_output=FALSE)
+
+# heatmap
+setwd("/Users/ronaldcutler/Dropbox\ (EinsteinMed)/Sidoli-lab/Projects/Single-cell-histone/Analysis/4-normalization/nabut/batch-corrected")
+
+# heatmap
+column_ha = HeatmapAnnotation(replicate = as.factor(obj.filter$replicate),
+                              cell_number = as.factor(obj.filter$multiplier),
+                              condition = as.factor(obj.filter$condition))
+row_ha = rowAnnotation(charge = anno_barplot(rowData(obj.filter)$Precursor.Charge))
+
+pdf("MS1.log2.center.combat_heatmap.pdf",
+    width = 10,
+    height = 10)
+set.seed(123)
+Heatmap(scale(assay(obj.filter, "MS1.log2.center.combat"), center = FALSE, scale = FALSE),
+        top_annotation = column_ha,
+        right_annotation = row_ha,
+        heatmap_legend_param = list(title = "Log2(MS2 area)"),
+        cluster_rows = TRUE,
+        cluster_columns = TRUE,
+        show_column_names = FALSE,
+        row_names_gp = gpar(fontsize = 10))
+dev.off()
+
+# PCA
+p <- pca(na.omit(assay(obj.filter, "MS1.log2.center.combat")),
+         metadata = colData(obj.filter),
+         center = TRUE, 
+         scale = TRUE)
+
+screeplot(p)
+
+pdf("MS1.log2.center.combat_eigencor.pdf",
+    width = 5,
+    height = 5)
+eigencorplot(p,
+             main = "Principle component correlations",
+             cexMain = 1.5,
+             metavars = c("replicate", "date", "run_id", "multiplier", "condition"),
+             col = viridis(100),
+             colCorval = 'firebrick',
+             fontCorval = 2,
+             cexCorval = 0.5,
+             rotLabX = 45,
+             posColKey = 'top')
+dev.off()
+
+pdf("MS1.log2.center.combat_replicate_pca.pdf",
+    width = 5,
+    height = 5)
+biplot(p,
+       colby = "replicate", 
+       shape = "multiplier",
+       legendPosition = 'right',
+       hline = 0, 
+       vline = 0,
+       gridlines.major = FALSE, 
+       gridlines.minor = FALSE,
+       lab = NULL)
+dev.off()
+
+pdf("MS1.log2.center.combat_condition_pca.pdf",
+    width = 5,
+    height = 5)
+biplot(p,
+       colby = "condition", 
+       shape = "multiplier",
+       legendPosition = 'right',
+       hline = 0, 
+       vline = 0,
+       gridlines.major = FALSE, 
+       gridlines.minor = FALSE,
+       lab = NULL)
+dev.off()
+```
+
+### MS2
+```{r}
+setwd("/Users/ronaldcutler/Dropbox\ (EinsteinMed)/Sidoli-lab/Projects/Single-cell-histone/Analysis/4-normalization/nabut/batchqc")
+
+# assess batch effects
+# batchQC(assay(obj.filter, "MS2.log2.center"), obj.filter$replicate, as.integer(obj.filter$condition),
+#         report_file="MS2.log2.center.no-correction.html", report_dir=".",
+#         report_option_binary="111111111",
+#         view_report=FALSE, interactive=FALSE, batchqc_output=FALSE)
+
+# correct batch using combat
+# keeping the number of cells and condition be variables of interest
+pdata <- data.frame(multiplier = as.integer(obj.filter$multiplier), condition = as.integer(obj.filter$condition))
+modmatrix <- model.matrix(~multiplier + condition, data = pdata)
+assays(obj.filter, withDimnames = FALSE)[["MS2.log2.center.combat"]] <- as.data.frame(ComBat(dat = assay(obj.filter, "MS2.log2.center"),
+                                                                                     batch = obj.filter$replicate,
+                                                                                     mod = modmatrix,
+                                                                                     ref.batch = 2))
+
+# assess correction
+# batchQC(assay(obj.filter, "MS2.log2.center.combat"), obj.filter$replicate, as.integer(obj.filter$condition),
+#         report_file="MS2.log2.center.correction.html", report_dir=".",
+#         report_option_binary="111111111",
+#         view_report=FALSE, interactive=FALSE, batchqc_output=FALSE)
+
+# heatmap
+setwd("/Users/ronaldcutler/Dropbox\ (EinsteinMed)/Sidoli-lab/Projects/Single-cell-histone/Analysis/4-normalization/nabut/batch-corrected")
+
+# heatmap
+column_ha = HeatmapAnnotation(replicate = as.factor(obj.filter$replicate),
+                              cell_number = as.factor(obj.filter$multiplier),
+                              condition = as.factor(obj.filter$condition))
+row_ha = rowAnnotation(charge = anno_barplot(rowData(obj.filter)$Precursor.Charge))
+
+pdf("MS2.log2.center.combat_heatmap.pdf",
+    width = 10,
+    height = 10)
+set.seed(123)
+Heatmap(scale(assay(obj.filter, "MS2.log2.center"), center = FALSE, scale = FALSE),
+        top_annotation = column_ha,
+        right_annotation = row_ha,
+        heatmap_legend_param = list(title = "Log2(MS2 area)"),
+        cluster_rows = TRUE,
+        cluster_columns = TRUE,
+        show_column_names = FALSE,
+        row_names_gp = gpar(fontsize = 10))
+dev.off()
+
+# PCA
+p <- pca(na.omit(assay(obj.filter, "MS2.log2.center")),
+         metadata = colData(obj.filter),
+         center = TRUE, 
+         scale = TRUE)
+
+screeplot(p)
+
+pdf("MS2.log2.center.combat_eigencor.pdf",
+    width = 5,
+    height = 5)
+eigencorplot(p,
+             main = "Principle component correlations",
+             cexMain = 1.5,
+             metavars = c("replicate", "date", "run_id", "multiplier", "condition"),
+             col = viridis(100),
+             colCorval = 'firebrick',
+             fontCorval = 2,
+             cexCorval = 0.5,
+             rotLabX = 45,
+             posColKey = 'top')
+dev.off()
+
+pdf("MS2.log2.center.combat_replicate_pca.pdf",
+    width = 5,
+    height = 5)
+biplot(p,
+       colby = "replicate", 
+       shape = "multiplier",
+       legendPosition = 'right',
+       hline = 0, 
+       vline = 0,
+       gridlines.major = FALSE, 
+       gridlines.minor = FALSE,
+       lab = NULL)
+dev.off()
+
+pdf("MS2.log2.center.combat_condition_pca.pdf",
+    width = 5,
+    height = 5)
+biplot(p,
+       colby = "condition", 
+       shape = "multiplier",
+       legendPosition = 'right',
+       hline = 0, 
+       vline = 0,
+       gridlines.major = FALSE, 
+       gridlines.minor = FALSE,
+       lab = NULL)
+dev.off()
+```
+
+### Save object
+```{r}
+setwd("/Users/ronaldcutler/Dropbox\ (EinsteinMed)/Sidoli-lab/Projects/Single-cell-histone/Analysis/4-normalization/nabut")
+
+saveRDS(obj.filter, "obj.filter.RDS")
+```
+
+### Output normalized intensities
+```{r}
+setwd("/Users/ronaldcutler/Dropbox\ (EinsteinMed)/Sidoli-lab/Projects/Single-cell-histone/Analysis/4-normalization/nabut/tables")
+
+write.csv(assay(obj.filter, "MS1.log2.center.combat"), "MS1.log2.center.combat.csv")
+```
+
+## Peptide ratio
+- Including cell number as a covariate has minimal effect
+
+### MS1
+
+#### With 100 cell samples
+```{r}
+dir.create("/Users/ronaldcutler/Dropbox\ (EinsteinMed)/Sidoli-lab/Projects/Single-cell-histone/Analysis/4-normalization/nabut/batchqc")
+setwd("/Users/ronaldcutler/Dropbox\ (EinsteinMed)/Sidoli-lab/Projects/Single-cell-histone/Analysis/4-normalization/nabut/batchqc")
+
+# assess batch effects
+batchQC(assay(obj.filter.ratio, "MS1.ratio"), obj.filter.ratio$replicate, as.integer(obj.filter.ratio$condition),
+        report_file="MS1.ratio.no-correction.html", report_dir=".", 
+        report_option_binary="111111111",
+        view_report=FALSE, interactive=FALSE, batchqc_output=FALSE)
+
+# correct batch using combat
+# have different cell numbers be condition
+pdata <- data.frame(multiplier = as.integer(obj.filter.ratio$multiplier), condition = as.integer(obj.filter.ratio$condition))
+modmatrix <- model.matrix(~multiplier + condition, data = pdata)
+assays(obj.filter.ratio, withDimnames = FALSE)[["MS1.ratio.combat"]] <- as.data.frame(ComBat(dat = assay(obj.filter.ratio, "MS1.ratio"),
+                                                                                     batch = obj.filter.ratio$replicate,
+                                                                                     mod = modmatrix,
+                                                                                     ref.batch = 2))
+
+# assess correction
+batchQC(assay(obj.filter.ratio, "MS1.ratio.combat"), obj.filter.ratio$replicate, as.integer(obj.filter.ratio$condition),
+        report_file="MS1.ratio.correction.html", report_dir=".", 
+        report_option_binary="111111111",
+        view_report=FALSE, interactive=FALSE, batchqc_output=FALSE)
+
+# heatmap
+setwd("/Users/ronaldcutler/Dropbox\ (EinsteinMed)/Sidoli-lab/Projects/Single-cell-histone/Analysis/4-normalization/nabut/batch-corrected")
+
+column_ha = HeatmapAnnotation(replicate = as.factor(obj.filter.ratio$replicate),
+                              run_id = obj.filter.ratio$run_id,
+                              cell_number = as.factor(obj.filter.ratio$multiplier))
+row_ha = rowAnnotation(charge = anno_barplot(rowData(obj.filter.ratio)$Precursor.Charge))
+
+pdf("MS1.ratio.combat_heatmap.pdf",
+    width = 10,
+    height = 10)
+set.seed(123)
+Heatmap(scale(assay(obj.filter.ratio, "MS1.ratio.combat"), center = FALSE, scale = FALSE),
+        top_annotation = column_ha,
+        right_annotation = row_ha,
+        heatmap_legend_param = list(title = "MS1 peptide ratio"),
+        cluster_rows = TRUE,
+        cluster_columns = TRUE,
+        show_column_names = FALSE,
+        row_names_gp = gpar(fontsize = 10))
+dev.off()
+
+# PCA
+p <- pca(na.omit(assay(obj.filter.ratio, "MS1.ratio.combat")),
+         metadata = colData(obj.filter.ratio),
+         center = TRUE, 
+         scale = TRUE)
+
+pdf("MS1.ratio.combat_screeplot.pdf",
+    width = 5,
+    height = 5)
+screeplot(p,
+          components = getComponents(p)[1:10])
+dev.off()
+
+pdf("MS1.ratio.combat_eigencor.pdf",
+    width = 5,
+    height = 5)
+eigencorplot(p,
+             main = "Principle component correlations",
+             cexMain = 1.5,
+             metavars = c("replicate", "date", "run_id", "multiplier", "condition"),
+             col = viridis(100),
+             colCorval = 'firebrick',
+             fontCorval = 2,
+             cexCorval = 0.5,
+             rotLabX = 45,
+             posColKey = 'top')
+dev.off()
+
+pdf("MS1.ratio.filtered.combat_replicate_pca.pdf",
+    width = 4,
+    height = 5)
+biplot(p,
+       colby = "replicate", 
+       shape = "multiplier",
+       legendPosition = 'top',
+       hline = 0, 
+       vline = 0,
+       lab = NULL) +
+  labs(color = "Replicate",
+       shape = "# Cells") +
+  theme_Publication() +
+  theme(legend.box="vertical", 
+        legend.margin=margin())
+dev.off()
+
+pdf("MS1.ratio.filtered.combat_condition_pca.pdf",
+    width = 4.5,
+    height = 5)
+biplot(p,
+       colby = "condition", 
+       shape = "multiplier",
+       legendPosition = 'top',
+       hline = 0, 
+       vline = 0,
+       lab = NULL) +
+  labs(color = "Condition",
+       shape = "# Cells") +
+  scale_color_manual(values = c("control" = "#317ec2", "treat" = "#c03830", "mix" = "grey")) +
+  theme_Publication() +
+  theme(legend.box="vertical", 
+        legend.margin=margin())
+dev.off()
+
+# colors can't be set
+pdf("MS1.ratio.filtered.combat_replicate_pca_pair.pdf",
+    width = 8,
+    height = 8)
+pairsplot(p,
+          colby = "condition", 
+           shape = "multiplier",
+           hline = 0, 
+           vline = 0,
+           lab = NULL) +
+  scale_color_manual(values = c("control" = "#317ec2", "treat" = "#c03830", "mix" = "grey"))
+dev.off()
+```
+
+#### Without 100 cell samples
+```{r}
+dir.create("/Users/ronaldcutler/Dropbox\ (EinsteinMed)/Sidoli-lab/Projects/Single-cell-histone/Analysis/4-normalization/nabut/batchqc")
+setwd("/Users/ronaldcutler/Dropbox\ (EinsteinMed)/Sidoli-lab/Projects/Single-cell-histone/Analysis/4-normalization/nabut/batchqc")
+
+obj.filter.ratio.sc <- obj.filter.ratio[,obj.filter.ratio$multiplier == 1]
+
+# assess batch effects
+batchQC(assay(obj.filter.ratio.sc, "MS1.ratio"), obj.filter.ratio.sc$replicate, as.integer(obj.filter.ratio.sc$condition),
+        report_file="MS1.ratio.sc.no-correction.html", report_dir=".", 
+        report_option_binary="111111111",
+        view_report=FALSE, interactive=FALSE, batchqc_output=FALSE)
+
+# correct batch using combat
+# have different cell numbers be condition
+pdata <- data.frame(multiplier = as.integer(obj.filter.ratio.sc$multiplier), condition = as.integer(obj.filter.ratio.sc$condition))
+modmatrix <- model.matrix(~condition, data = pdata)
+assays(obj.filter.ratio.sc, withDimnames = FALSE)[["MS1.ratio.combat"]] <- as.data.frame(ComBat(dat = assay(obj.filter.ratio.sc, "MS1.ratio"),
+                                                                                     batch = obj.filter.ratio.sc$replicate,
+                                                                                     mod = modmatrix,
+                                                                                     ref.batch = 2))
+
+# assess correction
+batchQC(assay(obj.filter.ratio.sc, "MS1.ratio.combat"), obj.filter.ratio.sc$replicate, as.integer(obj.filter.ratio.sc$condition),
+        report_file="MS1.ratio.sc.correction.html", report_dir=".", 
+        report_option_binary="111111111",
+        view_report=FALSE, interactive=FALSE, batchqc_output=FALSE)
+
+# heatmap
+setwd("/Users/ronaldcutler/Dropbox\ (EinsteinMed)/Sidoli-lab/Projects/Single-cell-histone/Analysis/4-normalization/nabut/batch-corrected")
+
+column_ha = HeatmapAnnotation(replicate = as.factor(obj.filter.ratio.sc$replicate),
+                              run_id = obj.filter.ratio.sc$run_id)
+row_ha = rowAnnotation(charge = anno_barplot(rowData(obj.filter.ratio.sc)$Precursor.Charge))
+
+pdf("MS1.ratio.combat_sc_heatmap.pdf",
+    width = 10,
+    height = 10)
+set.seed(123)
+Heatmap(scale(assay(obj.filter.ratio.sc, "MS1.ratio.combat"), center = FALSE, scale = FALSE),
+        top_annotation = column_ha,
+        right_annotation = row_ha,
+        heatmap_legend_param = list(title = "MS1 peptide ratio"),
+        cluster_rows = TRUE,
+        cluster_columns = TRUE,
+        show_column_names = FALSE,
+        row_names_gp = gpar(fontsize = 10))
+dev.off()
+
+# PCA
+p <- pca(na.omit(assay(obj.filter.ratio.sc, "MS1.ratio.combat")),
+         metadata = colData(obj.filter.ratio.sc),
+         center = TRUE, 
+         scale = TRUE)
+
+pdf("MS1.ratio.combat_sc_screeplot.pdf",
+    width = 5,
+    height = 5)
+screeplot(p,
+          components = getComponents(p)[1:10])
+dev.off()
+
+pdf("MS1.ratio.combat_sc_eigencor.pdf",
+    width = 5,
+    height = 5)
+eigencorplot(p,
+             main = "Principle component correlations",
+             cexMain = 1.5,
+             metavars = c("replicate", "date", "run_id", "condition"),
+             col = viridis(100),
+             colCorval = 'firebrick',
+             fontCorval = 2,
+             cexCorval = 0.5,
+             rotLabX = 45,
+             posColKey = 'top')
+dev.off()
+
+pdf("MS1.ratio.filtered.combat_sc_condition_pca.pdf",
+    width = 4.5,
+    height = 5)
+biplot(p,
+       colby = "condition", 
+       shape = "replicate",
+       legendPosition = 'top',
+       hline = 0, 
+       vline = 0,
+       lab = NULL) +
+  labs(color = "Condition",
+       shape = "Replicate") +
+  scale_color_manual(values = c("control" = "#317ec2", "treat" = "#c03830", "mix" = "grey")) +
+  theme_Publication() +
+  theme(legend.box="vertical", 
+        legend.margin=margin())
+dev.off()
+
+# colors can't be set
+pdf("MS1.ratio.filtered.combat_sc_replicate_pca_pair.pdf",
+    width = 8,
+    height = 8)
+pairsplot(p,
+          colby = "condition", 
+           shape = "replicate",
+           hline = 0, 
+           vline = 0,
+           lab = NULL) +
+  scale_color_manual(values = c("control" = "#317ec2", "treat" = "#c03830", "mix" = "grey"))
+dev.off()
+```
+
+### MS2
+
+#### With 100 cell samples
+```{r}
+dir.create("/Users/ronaldcutler/Dropbox\ (EinsteinMed)/Sidoli-lab/Projects/Single-cell-histone/Analysis/4-normalization/nabut/batchqc")
+setwd("/Users/ronaldcutler/Dropbox\ (EinsteinMed)/Sidoli-lab/Projects/Single-cell-histone/Analysis/4-normalization/nabut/batchqc")
+
+# assess batch effects
+batchQC(assay(obj.filter.ratio, "MS2.ratio"), obj.filter.ratio$replicate, as.integer(obj.filter.ratio$condition),
+        report_file="MS2.ratio.no-correction.html", report_dir=".", 
+        report_option_binary="111111111",
+        view_report=FALSE, interactive=FALSE, batchqc_output=FALSE)
+
+# correct batch using combat
+# have different cell numbers be condition
+pdata <- data.frame(multiplier = as.integer(obj.filter.ratio$multiplier), condition = as.integer(obj.filter.ratio$condition))
+modmatrix <- model.matrix(~multiplier + condition, data = pdata)
+assays(obj.filter.ratio, withDimnames = FALSE)[["MS2.ratio.combat"]] <- as.data.frame(ComBat(dat = assay(obj.filter.ratio, "MS2.ratio"),
+                                                                                     batch = obj.filter.ratio$replicate,
+                                                                                     mod = modmatrix,
+                                                                                     ref.batch = 2))
+
+# assess correction
+batchQC(assay(obj.filter.ratio, "MS2.ratio.combat"), obj.filter.ratio$replicate, as.integer(obj.filter.ratio$condition),
+        report_file="MS2.ratio.correction.html", report_dir=".", 
+        report_option_binary="111111111",
+        view_report=FALSE, interactive=FALSE, batchqc_output=FALSE)
+
+# heatmap
+setwd("/Users/ronaldcutler/Dropbox\ (EinsteinMed)/Sidoli-lab/Projects/Single-cell-histone/Analysis/4-normalization/nabut/batch-corrected")
+
+column_ha = HeatmapAnnotation(replicate = as.factor(obj.filter.ratio$replicate),
+                              run_id = obj.filter.ratio$run_id,
+                              cell_number = as.factor(obj.filter.ratio$multiplier))
+row_ha = rowAnnotation(charge = anno_barplot(rowData(obj.filter.ratio)$Precursor.Charge))
+
+pdf("MS2.ratio.combat_heatmap.pdf",
+    width = 10,
+    height = 10)
+set.seed(123)
+Heatmap(scale(assay(obj.filter.ratio, "MS2.ratio.combat"), center = FALSE, scale = FALSE),
+        top_annotation = column_ha,
+        right_annotation = row_ha,
+        heatmap_legend_param = list(title = "MS2 peptide ratio"),
+        cluster_rows = TRUE,
+        cluster_columns = TRUE,
+        show_column_names = FALSE,
+        row_names_gp = gpar(fontsize = 10))
+dev.off()
+
+# PCA
+p <- pca(na.omit(assay(obj.filter.ratio, "MS2.ratio.combat")),
+         metadata = colData(obj.filter.ratio),
+         center = TRUE, 
+         scale = TRUE)
+
+pdf("MS2.ratio.combat_screeplot.pdf",
+    width = 5,
+    height = 5)
+screeplot(p,
+          components = getComponents(p)[1:10])
+dev.off()
+
+pdf("MS2.ratio.combat_eigencor.pdf",
+    width = 5,
+    height = 5)
+eigencorplot(p,
+             main = "Principle component correlations",
+             cexMain = 1.5,
+             metavars = c("replicate", "date", "run_id", "multiplier", "condition"),
+             col = viridis(100),
+             colCorval = 'firebrick',
+             fontCorval = 2,
+             cexCorval = 0.5,
+             rotLabX = 45,
+             posColKey = 'top')
+dev.off()
+
+pdf("MS2.ratio.filtered.combat_replicate_pca.pdf",
+    width = 4,
+    height = 5)
+biplot(p,
+       colby = "replicate", 
+       shape = "multiplier",
+       legendPosition = 'top',
+       hline = 0, 
+       vline = 0,
+       lab = NULL) +
+  labs(color = "Replicate",
+       shape = "# Cells") +
+  theme_Publication() +
+  theme(legend.box="vertical", 
+        legend.margin=margin())
+dev.off()
+
+pdf("MS2.ratio.filtered.combat_condition_pca.pdf",
+    width = 4.5,
+    height = 5)
+biplot(p,
+       colby = "condition", 
+       shape = "multiplier",
+       legendPosition = 'top',
+       hline = 0, 
+       vline = 0,
+       lab = NULL) +
+  labs(color = "Condition",
+       shape = "Replicate") +
+  scale_color_manual(values = c("control" = "#317ec2", "treat" = "#c03830", "mix" = "grey")) +
+  theme_Publication() +
+  theme(legend.box="vertical", 
+        legend.margin=margin())
+dev.off()
+
+# colors can't be set
+pdf("MS2.ratio.filtered.combat_replicate_pca_pair.pdf",
+    width = 8,
+    height = 8)
+pairsplot(p,
+          colby = "condition", 
+           shape = "multiplier",
+           hline = 0, 
+           vline = 0,
+           lab = NULL) +
+  scale_color_manual(values = c("control" = "#317ec2", "treat" = "#c03830", "mix" = "grey"))
+dev.off()
+```
+
+#### Without 100 cell samples
+```{r}
+dir.create("/Users/ronaldcutler/Dropbox\ (EinsteinMed)/Sidoli-lab/Projects/Single-cell-histone/Analysis/4-normalization/nabut/batchqc")
+setwd("/Users/ronaldcutler/Dropbox\ (EinsteinMed)/Sidoli-lab/Projects/Single-cell-histone/Analysis/4-normalization/nabut/batchqc")
+
+obj.filter.ratio.sc <- obj.filter.ratio[,obj.filter.ratio$multiplier == 1]
+
+# assess batch effects
+batchQC(assay(obj.filter.ratio.sc, "MS2.ratio"), obj.filter.ratio.sc$replicate, as.integer(obj.filter.ratio.sc$condition),
+        report_file="MS2.ratio.sc.no-correction.html", report_dir=".", 
+        report_option_binary="111111111",
+        view_report=FALSE, interactive=FALSE, batchqc_output=FALSE)
+
+# correct batch using combat
+# have different cell numbers be condition
+pdata <- data.frame(multiplier = as.integer(obj.filter.ratio.sc$multiplier), condition = as.integer(obj.filter.ratio.sc$condition))
+modmatrix <- model.matrix(~condition, data = pdata)
+assays(obj.filter.ratio.sc, withDimnames = FALSE)[["MS2.ratio.combat"]] <- as.data.frame(ComBat(dat = assay(obj.filter.ratio.sc, "MS2.ratio"),
+                                                                                     batch = obj.filter.ratio.sc$replicate,
+                                                                                     mod = modmatrix,
+                                                                                     ref.batch = 2))
+
+# assess correction
+batchQC(assay(obj.filter.ratio.sc, "MS2.ratio.combat"), obj.filter.ratio.sc$replicate, as.integer(obj.filter.ratio.sc$condition),
+        report_file="MS2.ratio.sc.correction.html", report_dir=".", 
+        report_option_binary="111111111",
+        view_report=FALSE, interactive=FALSE, batchqc_output=FALSE)
+
+# heatmap
+setwd("/Users/ronaldcutler/Dropbox\ (EinsteinMed)/Sidoli-lab/Projects/Single-cell-histone/Analysis/4-normalization/nabut/batch-corrected")
+
+column_ha = HeatmapAnnotation(replicate = as.factor(obj.filter.ratio.sc$replicate),
+                              run_id = obj.filter.ratio.sc$run_id)
+row_ha = rowAnnotation(charge = anno_barplot(rowData(obj.filter.ratio.sc)$Precursor.Charge))
+
+pdf("MS2.ratio.combat_sc_heatmap.pdf",
+    width = 10,
+    height = 10)
+set.seed(123)
+Heatmap(scale(assay(obj.filter.ratio.sc, "MS2.ratio.combat"), center = FALSE, scale = FALSE),
+        top_annotation = column_ha,
+        right_annotation = row_ha,
+        heatmap_legend_param = list(title = "MS2 peptide ratio"),
+        cluster_rows = TRUE,
+        cluster_columns = TRUE,
+        show_column_names = FALSE,
+        row_names_gp = gpar(fontsize = 10))
+dev.off()
+
+# PCA
+p <- pca(na.omit(assay(obj.filter.ratio.sc, "MS2.ratio.combat")),
+         metadata = colData(obj.filter.ratio.sc),
+         center = TRUE, 
+         scale = TRUE)
+
+pdf("MS2.ratio.combat_sc_screeplot.pdf",
+    width = 5,
+    height = 5)
+screeplot(p,
+          components = getComponents(p)[1:10])
+dev.off()
+
+pdf("MS2.ratio.combat_sc_eigencor.pdf",
+    width = 5,
+    height = 5)
+eigencorplot(p,
+             main = "Principle component correlations",
+             cexMain = 1.5,
+             metavars = c("replicate", "date", "run_id", "condition"),
+             col = viridis(100),
+             colCorval = 'firebrick',
+             fontCorval = 2,
+             cexCorval = 0.5,
+             rotLabX = 45,
+             posColKey = 'top')
+dev.off()
+
+pdf("MS2.ratio.filtered.combat_sc_condition_pca.pdf",
+    width = 4.5,
+    height = 5)
+biplot(p,
+       colby = "condition", 
+       shape = "replicate",
+       legendPosition = 'top',
+       hline = 0, 
+       vline = 0,
+       lab = NULL) +
+  labs(color = "Condition",
+       shape = "Replicate") +
+  scale_color_manual(values = c("control" = "#317ec2", "treat" = "#c03830", "mix" = "grey")) +
+  theme_Publication() +
+  theme(legend.box="vertical", 
+        legend.margin=margin())
+dev.off()
+
+# colors can't be set
+pdf("MS2.ratio.filtered.combat_sc_replicate_pca_pair.pdf",
+    width = 8,
+    height = 8)
+pairsplot(p,
+          colby = "condition", 
+           shape = "replicate",
+           hline = 0, 
+           vline = 0,
+           lab = NULL) +
+  scale_color_manual(values = c("control" = "#317ec2", "treat" = "#c03830", "mix" = "grey"))
+dev.off()
+```
+
+### Global ratios
+- Update these from batch corrected values
+```{r}
+## me1
+obj.filter.ratio$global_me <- assay(obj.filter.ratio, "MS1.ratio.combat") %>%
+  filter(grepl("\\bme\\b", rownames(obj.filter.ratio))) %>%
+  colSums()
+
+## me2
+obj.filter.ratio$global_me2 <- assay(obj.filter.ratio, "MS1.ratio.combat") %>%
+  filter(grepl("\\bme2\\b", rownames(obj.filter.ratio))) %>%
+  colSums()
+
+## me3
+obj.filter.ratio$global_me3 <- assay(obj.filter.ratio, "MS1.ratio.combat") %>%
+  filter(grepl("\\bme3\\b", rownames(obj.filter.ratio))) %>%
+  colSums()
+
+## ac
+obj.filter.ratio$global_ac <- assay(obj.filter.ratio, "MS1.ratio.combat") %>%
+  filter(grepl("\\bac\\b", rownames(obj.filter.ratio))) %>%
+  colSums()
+
+# visualize
+obj.filter.ratio.global <- colData(obj.filter.ratio)[,c("global_me", "global_me2", "global_me3", "global_ac")]
+
+# heatmap
+column_ha = HeatmapAnnotation(replicate = as.factor(obj.filter.ratio$replicate),
+                              cell_number = as.factor(obj.filter.ratio$multiplier),
+                              condition = as.factor(obj.filter.ratio$condition))
+
+pdf("MS1.global.ratio.filtered.combat_heatmap.pdf",
+    width = 5,
+    height = 3)
+set.seed(123)
+Heatmap(as.matrix(t(obj.filter.ratio.global)),
+        top_annotation = column_ha,
+        heatmap_legend_param = list(title = "Total PTM abundance"),
+        cluster_rows = FALSE,
+        cluster_columns = TRUE,
+        show_column_names = FALSE,
+        show_row_names = TRUE,
+        row_names_gp = gpar(fontsize = 10))
+dev.off()
+
+# PCA
+p <- pca(as.matrix(t(obj.filter.ratio.global)),
+         metadata = colData(obj.filter.ratio),
+         center = TRUE, 
+         scale = TRUE)
+
+pdf("MS1.global.ratio.filtered.combat_eigencor.pdf",
+    width = 5,
+    height = 5)
+eigencorplot(p,
+             components = getComponents(p, seq_len(4)),
+             main = "Principle component correlations",
+             cexMain = 1.5,
+             metavars = c("replicate", "date", "run_id", "multiplier", "condition"),
+             col = viridis(100),
+             colCorval = 'firebrick',
+             fontCorval = 2,
+             cexCorval = 0.5,
+             rotLabX = 45,
+             posColKey = 'top')
+dev.off()
+
+pdf("MS1.global.ratio.filtered.combat_replicate_pca.pdf",
+    width = 4,
+    height = 5)
+biplot(p,
+       colby = "replicate", 
+       shape = "multiplier",
+       legendPosition = 'top',
+       hline = 0, 
+       vline = 0,
+       lab = NULL) +
+  labs(color = "Replicate",
+       shape = "# Cells") +
+  theme_Publication() +
+  theme(legend.box="vertical", 
+        legend.margin=margin())
+dev.off()
+
+pdf("MS1.global.ratio.filtered.combat_condition_pca.pdf",
+    width = 4,
+    height = 5)
+biplot(p,
+       colby = "condition", 
+       shape = "multiplier",
+       legendPosition = 'top',
+       hline = 0, 
+       vline = 0,
+       lab = NULL) +
+  labs(color = "Condition",
+       shape = "Replicate") +
+  theme_Publication() +
+  theme(legend.box="vertical", 
+        legend.margin=margin())
+dev.off()
+```
+
+### Save object
+```{r}
+setwd("/Users/ronaldcutler/Dropbox\ (EinsteinMed)/Sidoli-lab/Projects/Single-cell-histone/Analysis/4-normalization/nabut")
+
+saveRDS(obj.filter.ratio, "obj.filter.ratio.RDS")
+```
+
+### Output normalized intensities
+```{r}
+setwd("/Users/ronaldcutler/Dropbox\ (EinsteinMed)/Sidoli-lab/Projects/Single-cell-histone/Analysis/4-normalization/nabut/tables")
+
+write.csv(assay(obj.filter.ratio, "MS1.ratio.combat"), "MS1.ratio.combat.csv")
+```
