@@ -53,13 +53,13 @@ library(RColorBrewer)
 
 ## Functions
 ```{r}
-source("/Users/ronaldcutler/Dropbox\ (EinsteinMed)/Sidoli-lab/Projects/Single-cell-histone/Analysis/functions.R")
+source("~/single-cell-histone-ptm/functions.R")
 ```
 
 ## Load normalized cell data
 - 22 single cells
 ```{r}
-setwd("/Users/ronaldcutler/Dropbox (EinsteinMed)/Sidoli-lab/Projects/Single-cell-histone/Analysis/4-normalization/auto")
+setwd("~/single-cell-histone-ptm/4-normalization/auto")
 
 obj.filter.ratio.multi.cells <- readRDS("obj.filter.ratio.multi.RDS")
 
@@ -71,751 +71,16 @@ ncol(obj.filter.ratio.multi.sc[["ptm.ratio"]])
 ## Load normalized histone standard data
 - 12 standards
 ```{r}
-setwd("/Users/ronaldcutler/Dropbox (EinsteinMed)/Sidoli-lab/Projects/Single-cell-histone/Analysis/6-technical-variability/auto")
+setwd("~/single-cell-histone-ptm/6-technical-variability/auto")
 
 obj.filter.ratio.multi.standards.10pg <- readRDS("obj.filter.ratio.multi.10pg.RDS")
 
 ncol(obj.filter.ratio.multi.standards.10pg)
 ```
 
-# Cell-to-cell variation in peptidoforms
+# Analysis
 
 ## With technical variation
-
-### With unmodified peptidoforms
-
-#### Peptidoform level
-
-##### PCA
-```{r}
-dir.create("/Users/ronaldcutler/Dropbox (EinsteinMed)/Sidoli-lab/Projects/Single-cell-histone/Analysis/7-biological-variability/auto/with_technical_variation")
-dir.create("/Users/ronaldcutler/Dropbox (EinsteinMed)/Sidoli-lab/Projects/Single-cell-histone/Analysis/7-biological-variability/auto/with_technical_variation/with_unmodified_peptidoforms")
-dir.create("/Users/ronaldcutler/Dropbox (EinsteinMed)/Sidoli-lab/Projects/Single-cell-histone/Analysis/7-biological-variability/auto/with_technical_variation/with_unmodified_peptidoforms/pca")
-setwd("/Users/ronaldcutler/Dropbox (EinsteinMed)/Sidoli-lab/Projects/Single-cell-histone/Analysis/7-biological-variability/auto/with_technical_variation/with_unmodified_peptidoforms/pca")
-
-p <- pca(t(assay(obj.filter.ratio.multi.sc[["ptm.ratio"]], "MS1.ratio.log1p.batchCorrect")),
-         metadata = rowData(obj.filter.ratio.multi.sc[["ptm.ratio"]]),
-         center = TRUE, 
-         scale = TRUE)
-
-pdf("MS1.ratio.log1p.batchCorrect_screeplot_peptidoform.pdf",
-    width = 5,
-    height = 5)
-screeplot(p,
-          components = getComponents(p)[1:10])
-dev.off()
-
-pdf("MS1.ratio.log1p.batchCorrect_eigencor_peptidoform.pdf",
-    width = 5,
-    height = 5)
-eigencorplot(p,
-             main = "Principle component correlations",
-             cexMain = 1.5,
-             metavars = c("Protein.Name", "Peptide.Sequence", "Precursor.Charge"),
-             col = viridis(100),
-             colCorval = 'firebrick',
-             fontCorval = 2,
-             cexCorval = 0.5,
-             rotLabX = 45,
-             posColKey = 'top')
-dev.off()
-
-pdf("MS1.ratio.log1p.batchCorrect_protein_pca_peptidoform.pdf",
-    width = 7,
-    height = 5)
-biplot(p,
-       colby = "Protein.Name", 
-       hline = 0, 
-       vline = 0,
-       lab = NULL) +
-  labs(color = "Protein") +
-  theme_Publication() +
-  theme(legend.position = "right",
-        legend.direction = "vertical",
-        legend.margin=margin())
-dev.off()
-```
-
-##### Variance
-- Positive relationship between variance and mean
-- Log2 transform counts are more normally distributed
-- polynomial regression when log transform counts
-```{r}
-dir.create("/Users/ronaldcutler/Dropbox (EinsteinMed)/Sidoli-lab/Projects/Single-cell-histone/Analysis/7-biological-variability/auto/with_technical_variation/with_unmodified_peptidoforms/variance")
-setwd("/Users/ronaldcutler/Dropbox (EinsteinMed)/Sidoli-lab/Projects/Single-cell-histone/Analysis/7-biological-variability/auto/with_technical_variation/with_unmodified_peptidoforms/variance")
-
-# get relative abundance
-df <- assay(obj.filter.ratio.multi.sc[["ptm.ratio"]], "MS1.ratio.log1p.batchCorrect") %>%
-  as.data.frame() %>%
-  rownames_to_column("ptm") %>%
-  pivot_longer(
-    cols = -ptm, # This keeps the 'id' column fixed
-    names_to = "variable",
-    values_to = "value") %>%
-  group_by(ptm) %>%
-  summarize(mean = mean(value, na.rm = TRUE),
-            mean.log1p = log1p(mean),
-            variance = var(value, na.rm = TRUE),
-            vmr = variance/mean) %>%
-  merge(as.data.frame(rowData(obj.filter.ratio.multi.sc[["ptm.ratio"]])), by.x = "ptm", by.y = "row.names")
-df$Protein.Name <- protein_readable_translation(df$Protein.Name)
-
-# plot variance
-df.plot <- df[order(df$variance, decreasing = TRUE),] # order
-df.plot$ptm <- factor(df.plot$ptm,
-                      levels = rev(df.plot$ptm))
-
-pdf("MS1.ratio.log1p.batchCorrect_variance_all.pdf",
-    width = 6,
-    height = 5)
-ggplot(df.plot, aes(x=ptm, y=variance, fill=Protein.Name)) +
-  geom_bar(stat="identity", width=0.95, position = position_dodge(width=1)) +
-  geom_text(aes(label=ptm), vjust=0.5, hjust = -0.05, angle=0, position=position_dodge(width=1), size = 3) +
-  coord_flip() +
-  theme_Publication() +
-  scale_fill_manual(values = protein_colors) +
-  labs(y = "Variance",
-       x = "Histone PTM",
-       fill = "Protein") +
-  theme(legend.position = "right",
-      legend.direction = "vertical",
-      legend.margin=margin(),
-      axis.text.y=element_blank(),
-      axis.ticks.y=element_blank())
-dev.off()
-
-pdf("MS1.ratio.log1p.batchCorrect_variance_top_20.pdf",
-    width = 6,
-    height = 5)
-ggplot(df.plot[1:20,], aes(x=ptm, y=variance, fill=Protein.Name)) +
-  geom_bar(stat="identity", width=0.95, position = position_dodge(width=1)) +
-  geom_text(aes(label=ptm), vjust=0.5, hjust = -0.05, angle=0, position=position_dodge(width=1), size = 3) +
-  coord_flip() +
-  theme_Publication() +
-  scale_fill_manual(values = protein_colors) +
-  labs(y = "Variance",
-       x = "Histone PTM",
-       fill = "Protein") +
-  theme(legend.position = "right",
-      legend.direction = "vertical",
-      legend.margin=margin(),
-      axis.text.y=element_blank(),
-      axis.ticks.y=element_blank())
-dev.off()
-
-# var vs mean
-pdf("MS1.ratio.log1p.batchCorrect_mean_vs_variance.pdf",
-    width = 7,
-    height = 5)
-ggplot(df, aes(x = mean, y = variance)) +
-  geom_point(aes(color = Protein.Name)) +
-  geom_smooth(method = "lm") +
-  stat_cor() +
-  theme_Publication() +
-  labs(y = "Variance",
-       x = "Mean Relative Abundance",
-       color = "Protein") +
-  theme(legend.position = "right",
-      legend.direction = "vertical",
-      legend.margin=margin())
-dev.off()
-
-# plot vmr
-df.plot <- df[order(df$vmr, decreasing = TRUE),] # order
-df.plot$ptm <- factor(df.plot$ptm,
-                      levels = rev(df.plot$ptm))
-
-pdf("MS1.ratio.log1p.batchCorrect_vmr_all.pdf",
-    width = 6,
-    height = 5)
-ggplot(df.plot, aes(x=ptm, y=vmr, fill=Protein.Name)) +
-  geom_bar(stat="identity", width=0.95, position = position_dodge(width=1)) +
-  geom_text(aes(label=ptm), vjust=0.5, hjust = -0.05, angle=0, position=position_dodge(width=1), size = 3) +
-  coord_flip() +
-  theme_Publication() +
-  scale_fill_manual(values = protein_colors) +
-  labs(y = "Variance Mean Ratio",
-       x = "Histone PTM",
-       fill = "Protein") +
-  theme(legend.position = "right",
-      legend.direction = "vertical",
-      legend.margin=margin(),
-      axis.text.y=element_blank(),
-      axis.ticks.y=element_blank())
-dev.off()
-
-pdf("MS1.ratio.log1p.batchCorrect_vmr_top_20.pdf",
-    width = 6,
-    height = 5)
-ggplot(df.plot[1:20,], aes(x=ptm, y=vmr, fill=Protein.Name)) +
-  geom_bar(stat="identity", width=0.95, position = position_dodge(width=1)) +
-  geom_text(aes(label=ptm), vjust=0.5, hjust = -0.05, angle=0, position=position_dodge(width=1), size = 3) +
-  coord_flip() +
-  theme_Publication() +
-  scale_fill_manual(values = protein_colors) +
-  labs(y = "Variance Mean Ratio",
-       x = "Histone PTM",
-       fill = "Protein") +
-  theme(legend.position = "right",
-      legend.direction = "vertical",
-      legend.margin=margin(),
-      axis.text.y=element_blank(),
-      axis.ticks.y=element_blank()) 
-dev.off()
-
-# vmr vs mean
-pdf("MS1.ratio.log1p.batchCorrect_mean_vs_vmr.pdf",
-    width = 7,
-    height = 5)
-ggplot(df, aes(x = mean, y = vmr)) +
-  geom_point(aes(color = Protein.Name)) +
-  geom_smooth(method = "lm") +
-  stat_cor() +
-  theme_Publication() +
-  labs(y = "VMR",
-       x = "Mean Relative Abundance",
-       color = "Protein") +
-  theme(legend.position = "right",
-      legend.direction = "vertical",
-      legend.margin=margin())
-dev.off()
-
-# var vs log2 mean
-model <- lm(variance ~ poly(mean.log1p, 2, raw=TRUE), data=df)
-coefficients <- coef(model)
-equation <- sprintf("y = %.2f + %.2f*x + %.2f*x^2",
-                    coefficients[1], coefficients[2], coefficients[3])
-pdf("MS1.ratio.log1p.batchCorrect_mean.log1p_vs_variance.pdf",
-    width = 7,
-    height = 5)
-ggplot(df, aes(x = mean.log1p, y = variance)) +
-  geom_point(aes(color = Protein.Name)) +
-  geom_smooth(method = "lm", formula = y ~ poly(x, 2), color = "blue") +
-  stat_cor() +
-  theme_Publication() +
-  labs(y = "Variance",
-       x = "Log2(Mean Relative Abundance)",
-       color = "Protein") +
-  theme(legend.position = "right",
-      legend.direction = "vertical",
-      legend.margin=margin()) +
-  annotate("text", x = Inf, y = Inf, label = equation, hjust = 1.5, vjust = 5, size = 4, color = "black")
-dev.off()
-
-# vmr vs log2 mean
-pdf("MS1.ratio.log1p.batchCorrect_mean.log1p_vs_vmr.pdf",
-    width = 7,
-    height = 5)
-ggplot(df, aes(x = mean.log1p, y = vmr)) +
-  geom_point(aes(color = Protein.Name)) +
-  geom_smooth(method = "lm") +
-  stat_cor() +
-  theme_Publication() +
-  labs(y = "VMR",
-       x = "Log2(Mean Relative Abundance)",
-       color = "Protein") +
-  theme(legend.position = "right",
-      legend.direction = "vertical",
-      legend.margin=margin())
-dev.off()
-```
-
-##### Coefficient of variation
-- Inverse relationship between mean and CV^2
-```{r}
-dir.create("/Users/ronaldcutler/Dropbox (EinsteinMed)/Sidoli-lab/Projects/Single-cell-histone/Analysis/7-biological-variability/auto/with_technical_variation/with_unmodified_peptidoforms/coefficient_of_variation")
-setwd("/Users/ronaldcutler/Dropbox (EinsteinMed)/Sidoli-lab/Projects/Single-cell-histone/Analysis/7-biological-variability/auto/with_technical_variation/with_unmodified_peptidoforms/coefficient_of_variation")
-
-# get relative abundance
-df <- assay(obj.filter.ratio.multi.sc[["ptm.ratio"]], "MS1.ratio.log1p.batchCorrect") %>%
-  as.data.frame() %>%
-  rownames_to_column("ptm") %>%
-  pivot_longer(
-    cols = -ptm, # This keeps the 'id' column fixed
-    names_to = "variable",
-    values_to = "value") %>%
-  group_by(ptm) %>%
-  summarize(mean = mean(value, na.rm = TRUE),
-            mean.log1p = log1p(mean),
-            cv = sd(value, na.rm = TRUE)/mean,
-            cv.squared = cv^2) %>%
-  merge(as.data.frame(rowData(obj.filter.ratio.multi.sc[["ptm.ratio"]])), by.x = "ptm", by.y = "row.names")
-df$Protein.Name <- protein_readable_translation(df$Protein.Name)
-
-# plot cv
-df.plot <- df[order(df$cv, decreasing = TRUE),] # order
-df.plot$ptm <- factor(df.plot$ptm,
-                      levels = rev(df.plot$ptm))
-
-pdf("MS1.ratio.log1p.batchCorrect_cv_all.pdf",
-    width = 5,
-    height = 6)
-ggplot(df.plot, aes(x=ptm, y=cv, fill=mean.log1p)) +
-  geom_bar(stat="identity", width=0.95, position = position_dodge(width=1)) +
-  geom_text(aes(label=ptm), vjust=0.5, hjust = -0.05, angle=0, position=position_dodge(width=1), size = 3) +
-  coord_flip() +
-  theme_Publication() +
-  scale_fill_distiller(palette = 'RdBu') +
-  labs(y = "Coefficient of Variation",
-       x = "Histone PTM",
-       fill = "Mean\nRelative\nAbundance",
-       subtitle = "With Technical Noise") +
-  theme(legend.position = "right",
-      legend.direction = "vertical",
-      legend.margin=margin(),
-      axis.text.y=element_blank(),
-      axis.ticks.y=element_blank(),
-      legend.title = element_text(size = 10)) +
-    scale_y_continuous(labels = scales::percent_format(accuracy = 1), 
-                     breaks = c(seq(0, 1.25, by = 0.25)),
-                     limits = c(0, 1.25))
-dev.off()
-
-pdf("MS1.ratio.log1p.batchCorrect_cv_top_20.pdf",
-    width = 6,
-    height = 5)
-ggplot(df.plot[1:20,], aes(x=ptm, y=cv, fill=mean.log1p)) +
-  geom_bar(stat="identity", width=0.95, position = position_dodge(width=1)) +
-  geom_text(aes(label=ptm), vjust=0.5, hjust = -0.05, angle=0, position=position_dodge(width=1), size = 3) +
-  coord_flip() +
-  theme_Publication() +
-  #scale_fill_manual(values = protein_colors) +
-  scale_fill_distiller(palette = 'RdBu') +
-  labs(y = "Coefficient of Variation",
-       x = "Histone PTM",
-       fill = "Mean\nRelative\nAbundance") +
-  theme(legend.position = "right",
-      legend.direction = "vertical",
-      legend.margin=margin(),
-      axis.text.y=element_blank(),
-      axis.ticks.y=element_blank(),
-      legend.title = element_text(size = 10))
-dev.off()
-
-# cv vs mean
-model <- lm(cv ~ poly(mean, 2, raw=TRUE), data=df)
-coefficients <- coef(model)
-equation <- sprintf("y = %.2f + %.2f*x + %.2f*x^2",
-                    coefficients[1], coefficients[2], coefficients[3])
-pdf("MS1.ratio.log1p.batchCorrect_mean_vs_cv.pdf",
-    width = 7,
-    height = 5)
-ggplot(df, aes(x = mean, y = cv)) +
-  geom_point(aes(color = Protein.Name)) +
-  geom_smooth(method = "lm", formula = y ~ poly(x, 2), color = "blue") +
-  stat_cor() +
-  theme_Publication() +
-  labs(y = "Coefficient of Variation",
-       x = "Mean Relative Abundance",
-       color = "Protein") +
-  theme(legend.position = "right",
-      legend.direction = "vertical",
-      legend.margin=margin()) +
-  annotate("text", x = Inf, y = Inf, label = equation, hjust = 1.5, vjust = 5, size = 4, color = "black")
-dev.off()
-
-# plot cv2
-df.plot <- df[order(df$cv.squared, decreasing = TRUE),] # order
-df.plot$ptm <- factor(df.plot$ptm,
-                      levels = rev(df.plot$ptm))
-
-pdf("MS1.ratio.log1p.batchCorrect_cv2_all.pdf",
-    width = 6,
-    height = 5)
-ggplot(df.plot, aes(x=ptm, y=cv.squared, fill=Protein.Name)) +
-  geom_bar(stat="identity", width=0.95, position = position_dodge(width=1)) +
-  geom_text(aes(label=ptm), vjust=0.5, hjust = -0.05, angle=0, position=position_dodge(width=1), size = 3) +
-  coord_flip() +
-  theme_Publication() +
-  scale_fill_manual(values = protein_colors) +
-  labs(y = "Coefficient of Variation Squared",
-       x = "Histone PTM",
-       fill = "Protein") +
-  theme(legend.position = "right",
-      legend.direction = "vertical",
-      legend.margin=margin(),
-      axis.text.y=element_blank(),
-      axis.ticks.y=element_blank())
-dev.off()
-
-pdf("MS1.ratio.log1p.batchCorrect_cv2_top_20.pdf",
-    width = 6,
-    height = 5)
-ggplot(df.plot[1:20,], aes(x=ptm, y=cv.squared, fill=Protein.Name)) +
-  geom_bar(stat="identity", width=0.95, position = position_dodge(width=1)) +
-  geom_text(aes(label=ptm), vjust=0.5, hjust = -0.05, angle=0, position=position_dodge(width=1), size = 3) +
-  coord_flip() +
-  theme_Publication() +
-  scale_fill_manual(values = protein_colors) +
-  labs(y = "Coefficient of Variation Squared",
-       x = "Histone PTM",
-       fill = "Protein") +
-  theme(legend.position = "right",
-      legend.direction = "vertical",
-      legend.margin=margin(),
-      axis.text.y=element_blank(),
-      axis.ticks.y=element_blank()) 
-dev.off()
-
-# cv2 vs mean
-model <- lm(cv.squared ~ poly(mean, 2, raw=TRUE), data=df)
-coefficients <- coef(model)
-equation <- sprintf("y = %.2f + %.2f*x + %.2f*x^2",
-                    coefficients[1], coefficients[2], coefficients[3])
-pdf("MS1.ratio.log1p.batchCorrect_mean_vs_cv2.pdf",
-    width = 7,
-    height = 5)
-ggplot(df, aes(x = mean, y = cv.squared)) +
-  geom_point(aes(color = Protein.Name)) +
-  geom_smooth(method = "lm", formula = y ~ poly(x, 2), color = "blue") +
-  stat_cor() +
-  theme_Publication() +
-  labs(y = "Coefficient of Variation Squared",
-       x = "Mean Relative Abundance",
-       color = "Protein") +
-  theme(legend.position = "right",
-      legend.direction = "vertical",
-      legend.margin=margin()) +
-  annotate("text", x = Inf, y = Inf, label = equation, hjust = 1.5, vjust = 5, size = 4, color = "black")
-dev.off()
-
-# cv vs log2 mean
-model <- lm(cv.squared ~ poly(mean.log1p, 2, raw=TRUE), data=df)
-coefficients <- coef(model)
-equation <- sprintf("y = %.2f + %.2f*x + %.2f*x^2",
-                    coefficients[1], coefficients[2], coefficients[3])
-pdf("MS1.ratio.log1p.batchCorrect_mean.log1p_vs_cv.pdf",
-    width = 7,
-    height = 5)
-ggplot(df, aes(x = mean.log1p, y = cv)) +
-  geom_point(aes(color = Protein.Name)) +
-  geom_smooth(method = "lm", formula = y ~ poly(x, 2), color = "blue") +
-  stat_cor() +
-  theme_Publication() +
-  labs(y = "Coefficient of Variation",
-       x = "Log2(Mean Relative Abundance)",
-       color = "Protein") +
-  theme(legend.position = "right",
-      legend.direction = "vertical",
-      legend.margin=margin())+
-  annotate("text", x = Inf, y = Inf, label = equation, hjust = 1.5, vjust = 5, size = 4, color = "black")
-dev.off()
-
-# cv2 vs log2 mean
-model <- lm(cv.squared ~ poly(mean.log1p, 2, raw=TRUE), data=df)
-coefficients <- coef(model)
-equation <- sprintf("y = %.2f + %.2f*x + %.2f*x^2",
-                    coefficients[1], coefficients[2], coefficients[3])
-pdf("MS1.ratio.log1p.batchCorrect_mean.log1p_vs_cv2.pdf",
-    width = 7,
-    height = 5)
-ggplot(df, aes(x = mean.log1p, y = cv.squared)) +
-  geom_point(aes(color = Protein.Name)) +
-  geom_smooth(method = "lm", formula = y ~ poly(x, 2), color = "blue") +
-  stat_cor() +
-  theme_Publication() +
-  labs(y = "Coefficient of Variation Squared",
-       x = "Log2(Mean Relative Abundance)",
-       color = "Protein") +
-  theme(legend.position = "right",
-      legend.direction = "vertical",
-      legend.margin=margin()) +
-  annotate("text", x = Inf, y = Inf, label = equation, hjust = 1.5, vjust = 5, size = 4, color = "black")
-dev.off()
-```
-
-##### Beta regession
-- Beta regression is particularly well-suited for modeling data that are bounded between 0 and 1, such as proportions, percentages, and relative abundances. This statistical method assumes that the dependent variable is distributed according to a Beta distribution, which can handle the typical skewness and heteroscedasticity observed in bounded data more effectively than traditional linear regression.
-- It does not look like this model apprpriate fits the data
-```{r}
-dir.create("/Users/ronaldcutler/Dropbox (EinsteinMed)/Sidoli-lab/Projects/Single-cell-histone/Analysis/7-biological-variability/auto/with_technical_variation/with_unmodified_peptidoforms/beta_regression")
-setwd("/Users/ronaldcutler/Dropbox (EinsteinMed)/Sidoli-lab/Projects/Single-cell-histone/Analysis/7-biological-variability/auto/with_technical_variation/with_unmodified_peptidoforms/beta_regression")
-
-# get relative abundance
-df <- assay(obj.filter.ratio.multi.sc[["ptm.ratio"]], "MS1.ratio.log1p") %>%
-  as.data.frame() %>%
-  rownames_to_column("ptm") %>%
-  pivot_longer(
-    cols = -ptm, # This keeps the 'id' column fixed
-    names_to = "variable",
-    values_to = "value") %>%
-  merge(as.data.frame(colData(obj.filter.ratio.multi.sc)), by.x = "variable", by.y = "row.names")
-
-
-# check if values are between 0-1
-range(df$value)
-
-# Fit beta regression
-# including batch as a fixed effect - systematic effects
-model <- betareg(value ~ 1 + ptm + replicate, data = df) 
-summary(model)
-
-# Plotting fitted values vs. residuals
-# should be randomly distributed
-df$residuals <- residuals(model, type = "pearson")
-
-pdf("MS1.ratio.log1p.batchCorrect_beta_regression_residuals.pdf",
-    width = 5,
-    height = 5)
-ggplot(df, aes(x = fitted(model), y = residuals)) +
-  geom_point() +
-  geom_hline(yintercept = 0, linetype = "dashed", color = "red") +
-  labs(title = "Residuals vs. Fitted", x = "Fitted Values", y = "Residuals")
-dev.off()
-
-# Checking normality of residuals
-pdf("MS1.ratio.log1p.batchCorrect_beta_distribution_residuals.pdf",
-    width = 5,
-    height = 5)
-hist(residuals(model, type = "pearson"), breaks = 20, main = "Histogram of Residuals")
-dev.off()
-
-# Generating a Q-Q plot for residuals
-pdf("MS1.ratio.log1p.batchCorrect_beta_regression_qq.pdf",
-    width = 5,
-    height = 5)
-qqnorm(df$residuals)
-qqline(df$residuals, col = "steelblue")
-dev.off()
-```
-
-##### Linear regession
-- It looks like this model fits the data a bit better
-```{r}
-dir.create("/Users/ronaldcutler/Dropbox (EinsteinMed)/Sidoli-lab/Projects/Single-cell-histone/Analysis/7-biological-variability/auto/with_technical_variation/with_unmodified_peptidoforms/linear_regression")
-setwd("/Users/ronaldcutler/Dropbox (EinsteinMed)/Sidoli-lab/Projects/Single-cell-histone/Analysis/7-biological-variability/auto/with_technical_variation/with_unmodified_peptidoforms/linear_regression")
-
-# get relative abundance
-df <- assay(obj.filter.ratio.multi.sc[["ptm.ratio"]], "MS1.ratio") %>%
-  as.data.frame() %>%
-  rownames_to_column("ptm") %>%
-  pivot_longer(
-    cols = -ptm, # This keeps the 'id' column fixed
-    names_to = "variable",
-    values_to = "value") %>%
-  merge(as.data.frame(colData(obj.filter.ratio.multi.sc)), by.x = "variable", by.y = "row.names")
-
-
-# check if values are between 0-1
-range(df$value)
-
-# Fit beta regression
-# including batch as a fixed effect - systematic effects
-model <- glm(log2(value) ~ ptm + replicate, data = df) 
-summary(model)
-
-# Plotting fitted values vs. residuals
-# should be randomly distributed
-df$residuals <- residuals(model, type = "pearson")
-
-pdf("MS1.ratio.log1p.batchCorrect_linear_regression_residuals.pdf",
-    width = 5,
-    height = 5)
-ggplot(df, aes(x = fitted(model), y = residuals)) +
-  geom_point() +
-  geom_hline(yintercept = 0, linetype = "dashed", color = "red") +
-  labs(title = "Residuals vs. Fitted", x = "Fitted Values", y = "Residuals")
-dev.off()
-
-# Checking normality of residuals
-pdf("MS1.ratio.log1p.batchCorrect_linear_distribution_residuals.pdf",
-    width = 5,
-    height = 5)
-hist(residuals(model, type = "pearson"), breaks = 20, main = "Histogram of Residuals")
-dev.off()
-
-# Generating a Q-Q plot for residuals
-pdf("MS1.ratio.log1p.batchCorrect_linear_regression_qq.pdf",
-    width = 5,
-    height = 5)
-qqnorm(df$residuals)
-qqline(df$residuals, col = "steelblue")
-dev.off()
-
-ptm_variability <- df %>%
-  group_by(ptm) %>%
-  summarise(
-    Mean_Residual = mean(residuals),
-    SD_Residual = sd(residuals),
-    Count = n()
-  ) %>%
-  arrange(desc(SD_Residual))
-
-# plot
-# coefficients <- coef(model)
-# equation <- sprintf("y = %.2f + %.2f*x + %.2f*x^2",
-#                     coefficients[1], coefficients[2], coefficients[3])
-pdf("MS1.ratio.log1p.batchCorrect_linear_regression_mean_vs_residual.pdf",
-    width = 7,
-    height = 5)
-ggplot(ptm_variability, aes(x = Mean_Residual, y = SD_Residual)) +
-  geom_point() +
-  geom_smooth(method = "lm") +
-  stat_cor() +
-  theme_Publication() +
-  labs(y = "Residual",
-       x = "Mean",
-       color = "Protein") +
-  theme(legend.position = "right",
-      legend.direction = "vertical",
-      legend.margin=margin()) 
-dev.off()
-```
-
-##### PTM-PTM covariance
-```{r}
-dir.create("/Users/ronaldcutler/Dropbox (EinsteinMed)/Sidoli-lab/Projects/Single-cell-histone/Analysis/7-biological-variability/auto/with_technical_variation/with_unmodified_peptidoforms/covariance")
-setwd("/Users/ronaldcutler/Dropbox (EinsteinMed)/Sidoli-lab/Projects/Single-cell-histone/Analysis/7-biological-variability/auto/with_technical_variation/with_unmodified_peptidoforms/covariance")
-
-# Compute the correlation matrix
-cor.mat <- cor(t(assay(obj.filter.ratio.multi.sc[["ptm.ratio"]], "MS1.ratio.log1p.batchCorrect")),
-            method = "pearson")
-
-# Calculate the p-values of the correlations
-p.mat <- cor.mtest(t(assay(obj.filter.ratio.multi.sc[["ptm.ratio"]], "MS1.ratio.log1p.batchCorrect")), conf.level = 0.95)$p
-
-# output
-write.csv(cor.mat, "cor.mat.csv")
-write.csv(p.mat, "p.mat.csv")
-
-# plot correlation matrix
-pdf("covariance_matrix.pdf",
-    height = 15,
-    width = 15)
-corrplot(cor.mat, 
-         method = "color",
-         type = "full",
-         order = "hclust",
-         tl.pos = "lt",
-         col = COL2(diverging = c("RdBu"), n = 200),
-         tl.cex = 1,
-         tl.col = "black",
-         tl.offset = 0.3,
-         p.mat = p.mat,  # Add p-value matrix
-         sig.level = 0.05,  # Add significance level
-         insig = "blank")  # Non-significant correlations are blank
-dev.off()
-```
-
-### Cell level
-
-#### PCA
-- PC1 is correlated to total MS1
-- TODO: Correlate to cell size and DAPI intensity
-```{r}
-dir.create("/Users/ronaldcutler/Dropbox (EinsteinMed)/Sidoli-lab/Projects/Single-cell-histone/Analysis/7-biological-variability/auto/with_technical_variation/with_unmodified_peptidoforms/cells")
-setwd("/Users/ronaldcutler/Dropbox (EinsteinMed)/Sidoli-lab/Projects/Single-cell-histone/Analysis/7-biological-variability/auto/with_technical_variation/with_unmodified_peptidoforms/cells")
-
-p <- pca(assay(obj.filter.ratio.multi.sc[["ptm.ratio"]], "MS1.ratio.log1p.batchCorrect"),
-         metadata = colData(obj.filter.ratio.multi.sc),
-         center = TRUE, 
-         scale = TRUE)
-
-pdf("MS1.ratio.log1p.batchCorrect_screeplot_cells.pdf",
-    width = 5,
-    height = 5)
-screeplot(p,
-          components = getComponents(p)[1:10])
-dev.off()
-
-pdf("MS1.ratio.log1p.batchCorrect_eigencor_cells.pdf",
-    width = 5,
-    height = 5)
-eigencorplot(p,
-             main = "Principle component correlations",
-             cexMain = 1.5,
-             metavars = c("replicate", "run_id", "total.ms1"),
-             col = viridis(100),
-             colCorval = 'firebrick',
-             fontCorval = 2,
-             cexCorval = 0.5,
-             rotLabX = 45,
-             posColKey = 'top')
-dev.off()
-
-pdf("MS1.ratio.log1p.batchCorrect_replicate_pca_total_MS1_cells.pdf",
-    width = 4,
-    height = 5)
-biplot(p,
-       colby = "total.ms1", 
-       legendPosition = 'top',
-       hline = 0, 
-       vline = 0,
-       lab = NULL) +
-  scale_color_viridis_c() +
-  labs(color = "Total MS1") +
-  theme_Publication() +
-  theme(legend.box="vertical",
-        legend.margin=margin())
-dev.off()
-
-pdf("MS1.ratio.log1p.batchCorrect_replicate_pca_replicate_cells.pdf",
-    width = 4,
-    height = 5)
-biplot(p,
-       colby = "replicate", 
-       legendPosition = 'top',
-       hline = 0, 
-       vline = 0,
-       lab = NULL) +
-  labs(color = "Replicate") +
-  theme_Publication() +
-  theme(legend.box="vertical", 
-        legend.margin=margin())
-dev.off()
-```
-
-#### Euclidean Distance
-```{r}
-setwd("/Users/ronaldcutler/Dropbox (EinsteinMed)/Sidoli-lab/Projects/Single-cell-histone/Analysis/7-biological-variability/auto/with_technical_variation/with_unmodified_peptidoforms/cells")
-
-eucl.dist <- as.data.frame(dist(t(assay(obj.filter.ratio.multi.sc[["ptm.ratio"]], "MS1.ratio.log1p.batchCorrect"))))
-
-pdf("euclidean_distance.pdf",
-    height = 5,
-    width = 5)
-ggplot(eucl.dist, aes(x = x)) +
-  geom_density() +
-  theme_Publication() +
-  labs(x = "Pairwise Euclidean Distance",
-       y = "Density")
-dev.off()
-```
-
-#### Cell-cell covariance
-```{r}
-setwd("/Users/ronaldcutler/Dropbox (EinsteinMed)/Sidoli-lab/Projects/Single-cell-histone/Analysis/7-biological-variability/auto/with_technical_variation/with_unmodified_peptidoforms/cells")
-
-# Compute the correlation matrix
-cor.mat <- cor(assay(obj.filter.ratio.multi.sc[["ptm.ratio"]], "MS1.ratio.log1p.batchCorrect"),
-            method = "pearson")
-
-# Calculate the p-values of the correlations
-p.mat <- cor.mtest(assay(obj.filter.ratio.multi.sc[["ptm.ratio"]], "MS1.ratio.log1p.batchCorrect"), conf.level = 0.95)$p
-
-# output
-write.csv(cor.mat, "cor.mat.csv")
-write.csv(p.mat, "p.mat.csv")
-
-# plot correlation matrix
-pdf("covariance_matrix.pdf",
-    height = 15,
-    width = 15)
-corrplot(cor.mat, 
-         method = "color",
-         type = "full",
-         order = "hclust",
-         tl.pos = "lt",
-         #tl.col = all_colors[rownames(cor.mat)], # Apply color to labels based on row names
-         col = COL2(diverging = c("RdBu"), n = 200),
-         tl.cex = 1,
-         tl.col = "black",
-         tl.offset = 0.3,
-         p.mat = p.mat,  # Add p-value matrix
-         sig.level = 0.05,  # Add significance level
-         insig = "blank")  # Non-significant correlations are blank
-dev.off()
-```
 
 ### Without unmodified peptidoforms
 ```{r}
@@ -832,10 +97,10 @@ rownames(obj.filter.ratio.multi.sc.no_unmod[["ptm.ratio"]]) <- ptm_readable_tran
 
 ##### PCA
 ```{r}
-dir.create("/Users/ronaldcutler/Dropbox (EinsteinMed)/Sidoli-lab/Projects/Single-cell-histone/Analysis/7-biological-variability/auto/with_technical_variation")
-dir.create("/Users/ronaldcutler/Dropbox (EinsteinMed)/Sidoli-lab/Projects/Single-cell-histone/Analysis/7-biological-variability/auto/with_technical_variation/without_unmodified_peptidoforms")
-dir.create("/Users/ronaldcutler/Dropbox (EinsteinMed)/Sidoli-lab/Projects/Single-cell-histone/Analysis/7-biological-variability/auto/with_technical_variation/without_unmodified_peptidoforms/pca")
-setwd("/Users/ronaldcutler/Dropbox (EinsteinMed)/Sidoli-lab/Projects/Single-cell-histone/Analysis/7-biological-variability/auto/with_technical_variation/without_unmodified_peptidoforms/pca")
+dir.create("~/single-cell-histone-ptm/7-biological-variability/auto/with_technical_variation")
+dir.create("~/single-cell-histone-ptm/7-biological-variability/auto/with_technical_variation/without_unmodified_peptidoforms")
+dir.create("~/single-cell-histone-ptm/7-biological-variability/auto/with_technical_variation/without_unmodified_peptidoforms/pca")
+setwd("~/single-cell-histone-ptm/7-biological-variability/auto/with_technical_variation/without_unmodified_peptidoforms/pca")
 
 p <- pca(t(assay(obj.filter.ratio.multi.sc.no_unmod[["ptm.ratio"]], "MS1.ratio.log1p.batchCorrect")),
          metadata = rowData(obj.filter.ratio.multi.sc.no_unmod[["ptm.ratio"]]),
@@ -855,7 +120,7 @@ pdf("MS1.ratio.log1p.batchCorrect_eigencor_peptidoform.pdf",
 eigencorplot(p,
              main = "Principle component correlations",
              cexMain = 1.5,
-             metavars = c("Protein.Name", "Peptide.Sequence", "Precursor.Charge"),
+             metavars = c("Protein.Gene", "Peptide.Sequence", "Precursor.Charge"),
              col = viridis(100),
              colCorval = 'firebrick',
              fontCorval = 2,
@@ -868,7 +133,7 @@ pdf("MS1.ratio.log1p.batchCorrect_protein_pca_peptidoform.pdf",
     width = 7,
     height = 5)
 biplot(p,
-       colby = "Protein.Name", 
+       colby = "Protein.Gene", 
        hline = 0, 
        vline = 0,
        lab = NULL) +
@@ -885,8 +150,8 @@ dev.off()
 - Log2 transform counts are more normally distributed
 - polynomial regression when log transform counts
 ```{r}
-dir.create("/Users/ronaldcutler/Dropbox (EinsteinMed)/Sidoli-lab/Projects/Single-cell-histone/Analysis/7-biological-variability/auto/with_technical_variation/without_unmodified_peptidoforms/variance")
-setwd("/Users/ronaldcutler/Dropbox (EinsteinMed)/Sidoli-lab/Projects/Single-cell-histone/Analysis/7-biological-variability/auto/with_technical_variation/without_unmodified_peptidoforms/variance")
+dir.create("~/single-cell-histone-ptm/7-biological-variability/auto/with_technical_variation/without_unmodified_peptidoforms/variance")
+setwd("~/single-cell-histone-ptm/7-biological-variability/auto/with_technical_variation/without_unmodified_peptidoforms/variance")
 
 # get relative abundance
 df <- assay(obj.filter.ratio.multi.sc.no_unmod[["ptm.ratio"]], "MS1.ratio.log1p.batchCorrect") %>%
@@ -902,7 +167,7 @@ df <- assay(obj.filter.ratio.multi.sc.no_unmod[["ptm.ratio"]], "MS1.ratio.log1p.
             variance = var(value, na.rm = TRUE),
             vmr = variance/mean) %>%
   merge(as.data.frame(rowData(obj.filter.ratio.multi.sc.no_unmod[["ptm.ratio"]])), by.x = "ptm", by.y = "row.names")
-df$Protein.Name <- protein_readable_translation(df$Protein.Name)
+
 
 # plot variance
 df.plot <- df[order(df$variance, decreasing = TRUE),] # order
@@ -912,7 +177,7 @@ df.plot$ptm <- factor(df.plot$ptm,
 pdf("MS1.ratio.log1p.batchCorrect_variance_all.pdf",
     width = 6,
     height = 5)
-ggplot(df.plot, aes(x=ptm, y=variance, fill=Protein.Name)) +
+ggplot(df.plot, aes(x=ptm, y=variance, fill=Protein.Gene)) +
   geom_bar(stat="identity", width=0.95, position = position_dodge(width=1)) +
   geom_text(aes(label=ptm), vjust=0.5, hjust = -0.05, angle=0, position=position_dodge(width=1), size = 3) +
   coord_flip() +
@@ -932,7 +197,7 @@ dev.off()
 pdf("MS1.ratio.log1p.batchCorrect_variance_top_20.pdf",
     width = 6,
     height = 5)
-ggplot(df.plot[1:20,], aes(x=ptm, y=variance, fill=Protein.Name)) +
+ggplot(df.plot[1:20,], aes(x=ptm, y=variance, fill=Protein.Gene)) +
   geom_bar(stat="identity", width=0.95, position = position_dodge(width=1)) +
   geom_text(aes(label=ptm), vjust=0.5, hjust = -0.05, angle=0, position=position_dodge(width=1), size = 3) +
   coord_flip() +
@@ -954,7 +219,7 @@ pdf("MS1.ratio.log1p.batchCorrect_mean_vs_variance.pdf",
     width = 7,
     height = 5)
 ggplot(df, aes(x = mean, y = variance)) +
-  geom_point(aes(color = Protein.Name)) +
+  geom_point(aes(color = Protein.Gene)) +
   geom_smooth(method = "lm") +
   stat_cor() +
   theme_Publication() +
@@ -974,7 +239,7 @@ df.plot$ptm <- factor(df.plot$ptm,
 pdf("MS1.ratio.log1p.batchCorrect_vmr_all.pdf",
     width = 6,
     height = 5)
-ggplot(df.plot, aes(x=ptm, y=vmr, fill=Protein.Name)) +
+ggplot(df.plot, aes(x=ptm, y=vmr, fill=Protein.Gene)) +
   geom_bar(stat="identity", width=0.95, position = position_dodge(width=1)) +
   geom_text(aes(label=ptm), vjust=0.5, hjust = -0.05, angle=0, position=position_dodge(width=1), size = 3) +
   coord_flip() +
@@ -994,7 +259,7 @@ dev.off()
 pdf("MS1.ratio.log1p.batchCorrect_vmr_top_20.pdf",
     width = 6,
     height = 5)
-ggplot(df.plot[1:20,], aes(x=ptm, y=vmr, fill=Protein.Name)) +
+ggplot(df.plot[1:20,], aes(x=ptm, y=vmr, fill=Protein.Gene)) +
   geom_bar(stat="identity", width=0.95, position = position_dodge(width=1)) +
   geom_text(aes(label=ptm), vjust=0.5, hjust = -0.05, angle=0, position=position_dodge(width=1), size = 3) +
   coord_flip() +
@@ -1016,7 +281,7 @@ pdf("MS1.ratio.log1p.batchCorrect_mean_vs_vmr.pdf",
     width = 7,
     height = 5)
 ggplot(df, aes(x = mean, y = vmr)) +
-  geom_point(aes(color = Protein.Name)) +
+  geom_point(aes(color = Protein.Gene)) +
   geom_smooth(method = "lm") +
   stat_cor() +
   theme_Publication() +
@@ -1037,7 +302,7 @@ pdf("MS1.ratio.log1p.batchCorrect_mean.log1p_vs_variance.pdf",
     width = 7,
     height = 5)
 ggplot(df, aes(x = mean.log1p, y = variance)) +
-  geom_point(aes(color = Protein.Name)) +
+  geom_point(aes(color = Protein.Gene)) +
   geom_smooth(method = "lm", formula = y ~ poly(x, 2), color = "blue") +
   stat_cor() +
   theme_Publication() +
@@ -1055,7 +320,7 @@ pdf("MS1.ratio.log1p.batchCorrect_mean.log1p_vs_vmr.pdf",
     width = 7,
     height = 5)
 ggplot(df, aes(x = mean.log1p, y = vmr)) +
-  geom_point(aes(color = Protein.Name)) +
+  geom_point(aes(color = Protein.Gene)) +
   geom_smooth(method = "lm") +
   stat_cor() +
   theme_Publication() +
@@ -1071,8 +336,8 @@ dev.off()
 ##### Coefficient of variation
 - Inverse relationship between mean and CV^2
 ```{r}
-dir.create("/Users/ronaldcutler/Dropbox (EinsteinMed)/Sidoli-lab/Projects/Single-cell-histone/Analysis/7-biological-variability/auto/with_technical_variation/without_unmodified_peptidoforms/coefficient_of_variation")
-setwd("/Users/ronaldcutler/Dropbox (EinsteinMed)/Sidoli-lab/Projects/Single-cell-histone/Analysis/7-biological-variability/auto/with_technical_variation/without_unmodified_peptidoforms/coefficient_of_variation")
+dir.create("~/single-cell-histone-ptm/7-biological-variability/auto/with_technical_variation/without_unmodified_peptidoforms/coefficient_of_variation")
+setwd("~/single-cell-histone-ptm/7-biological-variability/auto/with_technical_variation/without_unmodified_peptidoforms/coefficient_of_variation")
 
 # get relative abundance
 df <- assay(obj.filter.ratio.multi.sc.no_unmod[["ptm.ratio"]], "MS1.ratio.log1p.batchCorrect") %>%
@@ -1088,7 +353,7 @@ df <- assay(obj.filter.ratio.multi.sc.no_unmod[["ptm.ratio"]], "MS1.ratio.log1p.
             cv = sd(value, na.rm = TRUE)/mean,
             cv.squared = cv^2) %>%
   merge(as.data.frame(rowData(obj.filter.ratio.multi.sc.no_unmod[["ptm.ratio"]])), by.x = "ptm", by.y = "row.names")
-df$Protein.Name <- protein_readable_translation(df$Protein.Name)
+
 
 # plot cv
 df.plot <- df[order(df$cv, decreasing = TRUE),] # order
@@ -1103,7 +368,10 @@ ggplot(df.plot, aes(x=ptm, y=cv, fill=mean.log1p)) +
   geom_text(aes(label=ptm), vjust=0.5, hjust = -0.05, angle=0, position=position_dodge(width=1), size = 3) +
   coord_flip() +
   theme_Publication() +
-  scale_fill_distiller(palette = 'RdBu') +
+  scale_fill_distiller(palette = 'RdBu', 
+                       limits = c(0, 0.75), # Set legend scale from 0 to 1
+                       breaks = c(0, 0.25, 0.5, 0.75)
+                       oob = scales::squish) + # Squish out-of-bound values to 0-1
   labs(y = "Coefficient of Variation",
        x = "Histone PTM",
        fill = "Mean\nRelative\nAbundance",
@@ -1115,8 +383,8 @@ ggplot(df.plot, aes(x=ptm, y=cv, fill=mean.log1p)) +
       axis.ticks.y=element_blank(),
       legend.title = element_text(size = 10)) +
     scale_y_continuous(labels = scales::percent_format(accuracy = 1), 
-                     breaks = c(seq(0, 1.25, by = 0.25)),
-                     limits = c(0, 1.25))
+                     breaks = c(seq(0, 1, by = 0.25)),
+                     limits = c(0, 1))
 dev.off()
 
 pdf("MS1.ratio.log1p.batchCorrect_cv_top_20.pdf",
@@ -1177,7 +445,7 @@ pdf("MS1.ratio.log1p.batchCorrect_mean_vs_cv.pdf",
     width = 6,
     height = 5)
 ggplot(df, aes(x = mean, y = cv)) +
-  geom_point(aes(color = Protein.Name)) +
+  geom_point(aes(color = Protein.Gene)) +
   geom_smooth(method = "lm", color = "blue") +
   stat_cor() +
   theme_Publication() +
@@ -1201,7 +469,7 @@ pdf("MS1.ratio.log1p.batchCorrect_mean.log1p_vs_cv.pdf",
     width = 7,
     height = 5)
 ggplot(df, aes(x = mean.log1p, y = cv)) +
-  geom_point(aes(color = Protein.Name)) +
+  geom_point(aes(color = Protein.Gene)) +
   geom_smooth(method = "lm", formula = y ~ poly(x, 2), color = "blue") +
   stat_cor() +
   theme_Publication() +
@@ -1223,7 +491,7 @@ df.plot$ptm <- factor(df.plot$ptm,
 pdf("MS1.ratio.log1p.batchCorrect_cv2_all.pdf",
     width = 6,
     height = 5)
-ggplot(df.plot, aes(x=ptm, y=cv.squared, fill=Protein.Name)) +
+ggplot(df.plot, aes(x=ptm, y=cv.squared, fill=Protein.Gene)) +
   geom_bar(stat="identity", width=0.95, position = position_dodge(width=1)) +
   geom_text(aes(label=ptm), vjust=0.5, hjust = -0.05, angle=0, position=position_dodge(width=1), size = 3) +
   coord_flip() +
@@ -1243,7 +511,7 @@ dev.off()
 pdf("MS1.ratio.log1p.batchCorrect_cv2_top_20.pdf",
     width = 6,
     height = 5)
-ggplot(df.plot[1:20,], aes(x=ptm, y=cv.squared, fill=Protein.Name)) +
+ggplot(df.plot[1:20,], aes(x=ptm, y=cv.squared, fill=Protein.Gene)) +
   geom_bar(stat="identity", width=0.95, position = position_dodge(width=1)) +
   geom_text(aes(label=ptm), vjust=0.5, hjust = -0.05, angle=0, position=position_dodge(width=1), size = 3) +
   coord_flip() +
@@ -1269,7 +537,7 @@ pdf("MS1.ratio.log1p.batchCorrect_mean_vs_cv2.pdf",
     width = 7,
     height = 5)
 ggplot(df, aes(x = mean, y = cv.squared)) +
-  geom_point(aes(color = Protein.Name)) +
+  geom_point(aes(color = Protein.Gene)) +
   geom_smooth(method = "lm", formula = y ~ poly(x, 2), color = "blue") +
   stat_cor() +
   theme_Publication() +
@@ -1291,7 +559,7 @@ pdf("MS1.ratio.log1p.batchCorrect_mean.log1p_vs_cv2.pdf",
     width = 7,
     height = 5)
 ggplot(df, aes(x = mean.log1p, y = cv.squared)) +
-  geom_point(aes(color = Protein.Name)) +
+  geom_point(aes(color = Protein.Gene)) +
   geom_smooth(method = "lm", formula = y ~ poly(x, 2), color = "blue") +
   stat_cor() +
   theme_Publication() +
@@ -1302,314 +570,6 @@ ggplot(df, aes(x = mean.log1p, y = cv.squared)) +
       legend.direction = "vertical",
       legend.margin=margin()) +
   annotate("text", x = Inf, y = Inf, label = equation, hjust = 1.5, vjust = 5, size = 4, color = "black")
-dev.off()
-```
-
-##### Beta regession
-- Beta regression is particularly well-suited for modeling data that are bounded between 0 and 1, such as proportions, percentages, and relative abundances. This statistical method assumes that the dependent variable is distributed according to a Beta distribution, which can handle the typical skewness and heteroscedasticity observed in bounded data more effectively than traditional linear regression.
-- It does not look like this model apprpriate fits the data
-```{r}
-dir.create("/Users/ronaldcutler/Dropbox (EinsteinMed)/Sidoli-lab/Projects/Single-cell-histone/Analysis/7-biological-variability/auto/with_technical_variation/without_unmodified_peptidoforms/beta_regression")
-setwd("/Users/ronaldcutler/Dropbox (EinsteinMed)/Sidoli-lab/Projects/Single-cell-histone/Analysis/7-biological-variability/auto/with_technical_variation/without_unmodified_peptidoforms/beta_regression")
-
-# get relative abundance
-df <- assay(obj.filter.ratio.multi.sc.no_unmod[["ptm.ratio"]], "MS1.ratio.log1p") %>%
-  as.data.frame() %>%
-  rownames_to_column("ptm") %>%
-  pivot_longer(
-    cols = -ptm, # This keeps the 'id' column fixed
-    names_to = "variable",
-    values_to = "value") %>%
-  merge(as.data.frame(colData(obj.filter.ratio.multi.sc.no_unmod)), by.x = "variable", by.y = "row.names")
-
-
-# check if values are between 0-1
-range(df$value)
-
-# Fit beta regression
-# including batch as a fixed effect - systematic effects
-model <- betareg(value ~ 1 + ptm + replicate, data = df) 
-summary(model)
-
-# Plotting fitted values vs. residuals
-# should be randomly distributed
-df$residuals <- residuals(model, type = "pearson")
-
-pdf("MS1.ratio.log1p.batchCorrect_beta_regression_residuals.pdf",
-    width = 5,
-    height = 5)
-ggplot(df, aes(x = fitted(model), y = residuals)) +
-  geom_point() +
-  geom_hline(yintercept = 0, linetype = "dashed", color = "red") +
-  labs(title = "Residuals vs. Fitted", x = "Fitted Values", y = "Residuals")
-dev.off()
-
-# Checking normality of residuals
-pdf("MS1.ratio.log1p.batchCorrect_beta_distribution_residuals.pdf",
-    width = 5,
-    height = 5)
-hist(residuals(model, type = "pearson"), breaks = 20, main = "Histogram of Residuals")
-dev.off()
-
-# Generating a Q-Q plot for residuals
-pdf("MS1.ratio.log1p.batchCorrect_beta_regression_qq.pdf",
-    width = 5,
-    height = 5)
-qqnorm(df$residuals)
-qqline(df$residuals, col = "steelblue")
-dev.off()
-```
-
-##### Linear regession
-- It looks like this model fits the data a bit better
-```{r}
-dir.create("/Users/ronaldcutler/Dropbox (EinsteinMed)/Sidoli-lab/Projects/Single-cell-histone/Analysis/7-biological-variability/auto/with_technical_variation/without_unmodified_peptidoforms/linear_regression")
-setwd("/Users/ronaldcutler/Dropbox (EinsteinMed)/Sidoli-lab/Projects/Single-cell-histone/Analysis/7-biological-variability/auto/with_technical_variation/without_unmodified_peptidoforms/linear_regression")
-
-# get relative abundance
-df <- assay(obj.filter.ratio.multi.sc.no_unmod[["ptm.ratio"]], "MS1.ratio.log1p") %>%
-  as.data.frame() %>%
-  rownames_to_column("ptm") %>%
-  pivot_longer(
-    cols = -ptm, # This keeps the 'id' column fixed
-    names_to = "variable",
-    values_to = "value") %>%
-  merge(as.data.frame(colData(obj.filter.ratio.multi.sc.no_unmod)), by.x = "variable", by.y = "row.names")
-
-
-# check if values are between 0-1
-range(df$value)
-
-# Fit beta regression
-# including batch as a fixed effect - systematic effects
-model <- glm(log2(value) ~ ptm + replicate, data = df) 
-summary(model)
-
-# Plotting fitted values vs. residuals
-# should be randomly distributed
-df$residuals <- residuals(model, type = "pearson")
-
-pdf("MS1.ratio.log1p.batchCorrect_linear_regression_residuals.pdf",
-    width = 5,
-    height = 5)
-ggplot(df, aes(x = fitted(model), y = residuals)) +
-  geom_point() +
-  geom_hline(yintercept = 0, linetype = "dashed", color = "red") +
-  labs(title = "Residuals vs. Fitted", x = "Fitted Values", y = "Residuals")
-dev.off()
-
-# Checking normality of residuals
-pdf("MS1.ratio.log1p.batchCorrect_linear_distribution_residuals.pdf",
-    width = 5,
-    height = 5)
-hist(residuals(model, type = "pearson"), breaks = 20, main = "Histogram of Residuals")
-dev.off()
-
-# Generating a Q-Q plot for residuals
-pdf("MS1.ratio.log1p.batchCorrect_linear_regression_qq.pdf",
-    width = 5,
-    height = 5)
-qqnorm(df$residuals)
-qqline(df$residuals, col = "steelblue")
-dev.off()
-
-ptm_variability <- df %>%
-  group_by(ptm) %>%
-  summarise(
-    Mean_Residual = mean(residuals),
-    SD_Residual = sd(residuals),
-    Count = n()
-  ) %>%
-  arrange(desc(SD_Residual))
-
-# plot
-# coefficients <- coef(model)
-# equation <- sprintf("y = %.2f + %.2f*x + %.2f*x^2",
-#                     coefficients[1], coefficients[2], coefficients[3])
-pdf("MS1.ratio.log1p.batchCorrect_linear_regression_mean_vs_residual.pdf",
-    width = 7,
-    height = 5)
-ggplot(ptm_variability, aes(x = Mean_Residual, y = SD_Residual)) +
-  geom_point() +
-  geom_smooth(method = "lm") +
-  stat_cor() +
-  theme_Publication() +
-  labs(y = "Residual",
-       x = "Mean",
-       color = "Protein") +
-  theme(legend.position = "right",
-      legend.direction = "vertical",
-      legend.margin=margin()) 
-dev.off()
-```
-
-##### PTM-PTM covariance
-- Color the names of the PTMs to be the color of the proteins
-```{r}
-dir.create("/Users/ronaldcutler/Dropbox (EinsteinMed)/Sidoli-lab/Projects/Single-cell-histone/Analysis/7-biological-variability/auto/with_technical_variation/without_unmodified_peptidoforms/covariance")
-setwd("/Users/ronaldcutler/Dropbox (EinsteinMed)/Sidoli-lab/Projects/Single-cell-histone/Analysis/7-biological-variability/auto/with_technical_variation/without_unmodified_peptidoforms/covariance")
-
-# Compute the correlation matrix
-cor.mat <- cor(t(assay(obj.filter.ratio.multi.sc.no_unmod[["ptm.ratio"]], "MS1.ratio.log1p.batchCorrect")),
-            method = "pearson")
-
-# Perform hierarchical clustering
-dist.mat <- dist(cor.mat)
-hc <- hclust(dist.mat)
-
-# Calculate the p-values of the correlations
-p.mat <- cor.mtest(t(assay(obj.filter.ratio.multi.sc.no_unmod[["ptm.ratio"]], "MS1.ratio.log1p.batchCorrect")), conf.level = 0.95)$p
-
-# set protein colors
-rowdata <- rowData(obj.filter.ratio.multi.sc.no_unmod[["ptm.ratio"]])
-rowdata$Protein.Name <- protein_readable_translation(rowdata$Protein.Name)
-rowdata <- rowdata[match(rownames(cor.mat), rownames(rowdata)),]
-
-# Reorder Protein.Names according to hierarchical clustering order
-rowdata <- rowdata[hc$order, ]
-
-# Create a color vector matched to the reordered labels
-#protein_color_map <- setNames(protein_colors, rowdata$Protein.Name)  # Ensure protein_color_map exists
-
-# Output matrices
-write.csv(cor.mat, "cor.mat.csv")
-write.csv(p.mat, "p.mat.csv")
-
-# Plot correlation matrix
-pdf("covariance_matrix.pdf", height = 10, width = 10)
-corrplot(cor.mat, 
-         method = "color",
-         type = "full",
-         order = "hclust",  # Ensure clustering order matches the row order used
-         tl.pos = "lt",
-         #tl.col = protein_colors[rowdata$Protein.Name],  # Apply color to labels based on row names
-         tl.col = "black",
-         col = COL2(diverging = c("RdBu"), n = 200),
-         tl.cex = 1,
-         tl.offset = 0.3,
-         p.mat = p.mat,  # Add p-value matrix
-         sig.level = 0.05,  # Add significance level
-         insig = "blank")  # Non-significant correlations are blank
-dev.off()
-```
-
-### Cell level
-
-#### PCA
-- PC1 is correlated to total MS1
-- TODO: Correlate to cell size and DAPI intensity
-```{r}
-dir.create("/Users/ronaldcutler/Dropbox (EinsteinMed)/Sidoli-lab/Projects/Single-cell-histone/Analysis/7-biological-variability/auto/with_technical_variation/without_unmodified_peptidoforms/cells")
-setwd("/Users/ronaldcutler/Dropbox (EinsteinMed)/Sidoli-lab/Projects/Single-cell-histone/Analysis/7-biological-variability/auto/with_technical_variation/without_unmodified_peptidoforms/cells")
-
-p <- pca(assay(obj.filter.ratio.multi.sc.no_unmod[["ptm.ratio"]], "MS1.ratio.log1p.batchCorrect"),
-         metadata = colData(obj.filter.ratio.multi.sc.no_unmod),
-         center = TRUE, 
-         scale = TRUE)
-
-pdf("MS1.ratio.log1p.batchCorrect_screeplot_cells.pdf",
-    width = 5,
-    height = 5)
-screeplot(p,
-          components = getComponents(p)[1:10])
-dev.off()
-
-pdf("MS1.ratio.log1p.batchCorrect_eigencor_cells.pdf",
-    width = 5,
-    height = 5)
-eigencorplot(p,
-             main = "Principle component correlations",
-             cexMain = 1.5,
-             metavars = c("replicate", "run_id", "total.ms1"),
-             col = viridis(100),
-             colCorval = 'firebrick',
-             fontCorval = 2,
-             cexCorval = 0.5,
-             rotLabX = 45,
-             posColKey = 'top')
-dev.off()
-
-pdf("MS1.ratio.log1p.batchCorrect_replicate_pca_total_MS1_cells.pdf",
-    width = 5,
-    height = 5)
-biplot(p,
-       colby = "total.ms1", 
-       legendPosition = 'top',
-       hline = 0, 
-       vline = 0,
-       lab = NULL) +
-  scale_color_viridis_c() +
-  labs(color = "Total MS1") +
-  theme_Publication() +
-  theme(legend.box="vertical",
-        legend.margin=margin())
-dev.off()
-
-pdf("MS1.ratio.log1p.batchCorrect_replicate_pca_replicate_cells.pdf",
-    width = 5,
-    height = 5)
-biplot(p,
-       colby = "replicate", 
-       legendPosition = 'top',
-       hline = 0, 
-       vline = 0,
-       lab = NULL) +
-  labs(color = "Replicate") +
-  theme_Publication() +
-  theme(legend.box="vertical", 
-        legend.margin=margin())
-dev.off()
-```
-
-#### Euclidean Distance
-```{r}
-setwd("/Users/ronaldcutler/Dropbox (EinsteinMed)/Sidoli-lab/Projects/Single-cell-histone/Analysis/7-biological-variability/auto/with_technical_variation/without_unmodified_peptidoforms/cells")
-
-eucl.dist <- as.data.frame(dist(t(assay(obj.filter.ratio.multi.sc.no_unmod[["ptm.ratio"]], "MS1.ratio.log1p.batchCorrect"))))
-
-pdf("euclidean_distance.pdf",
-    height = 5,
-    width = 5)
-ggplot(eucl.dist, aes(x = x)) +
-  geom_density() +
-  theme_Publication() +
-  labs(x = "Pairwise Euclidean Distance",
-       y = "Density")
-dev.off()
-```
-
-#### Cell-cell covariance
-```{r}
-setwd("/Users/ronaldcutler/Dropbox (EinsteinMed)/Sidoli-lab/Projects/Single-cell-histone/Analysis/7-biological-variability/auto/with_technical_variation/without_unmodified_peptidoforms/cells")
-
-# Compute the correlation matrix
-cor.mat <- cor(assay(obj.filter.ratio.multi.sc.no_unmod[["ptm.ratio"]], "MS1.ratio.log1p.batchCorrect"),
-            method = "pearson")
-
-# Calculate the p-values of the correlations
-p.mat <- cor.mtest(assay(obj.filter.ratio.multi.sc.no_unmod[["ptm.ratio"]], "MS1.ratio.log1p.batchCorrect"), conf.level = 0.95)$p
-
-# output
-write.csv(cor.mat, "cor.mat.csv")
-write.csv(p.mat, "p.mat.csv")
-
-# plot correlation matrix
-pdf("covariance_matrix.pdf",
-    height = 15,
-    width = 15)
-corrplot(cor.mat, 
-         method = "color",
-         type = "full",
-         order = "hclust",
-         tl.pos = "lt",
-         #tl.col = all_colors[rownames(cor.mat)], # Apply color to labels based on row names
-         col = COL2(diverging = c("RdBu"), n = 200),
-         tl.cex = 1,
-         tl.col = "black",
-         tl.offset = 0.3,
-         p.mat = p.mat,  # Add p-value matrix
-         sig.level = 0.05,  # Add significance level
-         insig = "blank")  # Non-significant correlations are blank
 dev.off()
 ```
 
@@ -1624,8 +584,8 @@ dev.off()
 - If technical is higher than biological, than this ptm is filtered out
 - Improvement: adjust for technical variance using a mixed effects model lmer
 ```{r}
-dir.create("/Users/ronaldcutler/Dropbox (EinsteinMed)/Sidoli-lab/Projects/Single-cell-histone/Analysis/7-biological-variability/auto/without_technical_variation")
-setwd("/Users/ronaldcutler/Dropbox (EinsteinMed)/Sidoli-lab/Projects/Single-cell-histone/Analysis/7-biological-variability/auto/without_technical_variation")
+dir.create("~/single-cell-histone-ptm/7-biological-variability/auto/without_technical_variation")
+setwd("~/single-cell-histone-ptm/7-biological-variability/auto/without_technical_variation")
 
 # get the technical variance
 tech.var <- assay(obj.filter.ratio.multi.standards.10pg, "MS1.ratio.log1p.batchCorrect") %>% 
@@ -1640,7 +600,7 @@ tech.var <- assay(obj.filter.ratio.multi.standards.10pg, "MS1.ratio.log1p.batchC
             var = sd(value, na.rm = TRUE)^2,
             cv = sd(value, na.rm = TRUE) / mean) %>%
   merge(as.data.frame(rowData(obj.filter.ratio.multi.standards.10pg)), by.x = "ptm", by.y = "row.names")
-tech.var$Protein.Name <- protein_readable_translation(tech.var$Protein.Name)
+
 
 # get the cell-to-cell variance
 bio.var <- assay(obj.filter.ratio.multi.sc[["ptm.ratio"]], "MS1.ratio.log1p.batchCorrect") %>% 
@@ -1655,7 +615,6 @@ bio.var <- assay(obj.filter.ratio.multi.sc[["ptm.ratio"]], "MS1.ratio.log1p.batc
             var = sd(value, na.rm = TRUE)^2,
             cv = sd(value, na.rm = TRUE) / mean) %>%
   merge(as.data.frame(rowData(obj.filter.ratio.multi.sc[["ptm.ratio"]])), by.x = "ptm", by.y = "row.names")
-bio.var$Protein.Name <- protein_readable_translation(bio.var$Protein.Name)
 
 # merge with bio as ref
 # x = bio, y = tech
@@ -1668,9 +627,9 @@ var.merged <- var.merged %>%
   filter(var.adj > 0) # if there are negative variances, then filter these out
 
 bio.var.adj <- data.frame(ptm = var.merged$ptm,
-                          Protein.Name = var.merged$Protein.Name.x,
+                          Protein.Gene = var.merged$Protein.Gene,
                           Peptide.Sequence = var.merged$Peptide.Sequence.x,
-                          Peptide.Sequence = var.merged$Precursor.Charge.x,
+                          Precursor.Charge = var.merged$Precursor.Charge.x,
                           mean.bio = var.merged$mean.x,
                           var.bio = var.merged$var.x,
                           cv.bio = var.merged$cv.x,
@@ -1707,156 +666,6 @@ ggpaired(bio.var.adj.plot, x = "variable", y = "value", id = "ptm",
 dev.off()
 ```
 
-### With unmodified peptidoforms
-
-#### Peptidoform level
-
-##### Variance
-- Positive relationship between variance and mean
-- Log2 transform counts are more normally distributed
-- polynomial regression when log transform counts
-```{r}
-dir.create("/Users/ronaldcutler/Dropbox (EinsteinMed)/Sidoli-lab/Projects/Single-cell-histone/Analysis/7-biological-variability/auto/without_technical_variation/with_unmodified_peptidoforms")
-dir.create("/Users/ronaldcutler/Dropbox (EinsteinMed)/Sidoli-lab/Projects/Single-cell-histone/Analysis/7-biological-variability/auto/without_technical_variation/with_unmodified_peptidoforms/variance")
-setwd("/Users/ronaldcutler/Dropbox (EinsteinMed)/Sidoli-lab/Projects/Single-cell-histone/Analysis/7-biological-variability/auto/without_technical_variation/with_unmodified_peptidoforms/variance")
-
-# plot variance
-df.plot <- bio.var.adj[order(bio.var.adj$var.bio.adj, decreasing = TRUE),] # order
-df.plot$ptm <- factor(df.plot$ptm,
-                      levels = rev(df.plot$ptm))
-
-pdf("MS1.ratio.log1p.batchCorrect_variance_all.pdf",
-    width = 6,
-    height = 5)
-ggplot(df.plot, aes(x=ptm, y=var.bio.adj, fill=Protein.Name)) +
-  geom_bar(stat="identity", width=0.95, position = position_dodge(width=1)) +
-  geom_text(aes(label=ptm), vjust=0.5, hjust = -0.05, angle=0, position=position_dodge(width=1), size = 3) +
-  coord_flip() +
-  theme_Publication() +
-  scale_fill_manual(values = protein_colors) +
-  labs(y = "Adjusted Variance",
-       x = "Histone PTM",
-       fill = "Protein") +
-  theme(legend.position = "right",
-      legend.direction = "vertical",
-      legend.margin=margin(),
-      axis.text.y=element_blank(),
-      axis.ticks.y=element_blank())
-dev.off()
-
-pdf("MS1.ratio.log1p.batchCorrect_variance_top_20.pdf",
-    width = 6,
-    height = 5)
-ggplot(df.plot[1:20,], aes(x=ptm, y=var.bio.adj, fill=Protein.Name)) +
-  geom_bar(stat="identity", width=0.95, position = position_dodge(width=1)) +
-  geom_text(aes(label=ptm), vjust=0.5, hjust = -0.05, angle=0, position=position_dodge(width=1), size = 3) +
-  coord_flip() +
-  theme_Publication() +
-  scale_fill_manual(values = protein_colors) +
-  labs(y = "Adjusted Variance",
-       x = "Histone PTM",
-       fill = "Protein") +
-  theme(legend.position = "right",
-      legend.direction = "vertical",
-      legend.margin=margin(),
-      axis.text.y=element_blank(),
-      axis.ticks.y=element_blank())
-dev.off()
-
-# var vs mean
-pdf("MS1.ratio.log1p.batchCorrect_mean_vs_variance.pdf",
-    width = 7,
-    height = 5)
-ggplot(df.plot, aes(x = mean.bio, y = var.bio.adj)) +
-  geom_point(aes(color = Protein.Name)) +
-  geom_smooth(method = "lm") +
-  stat_cor() +
-  theme_Publication() +
-  labs(y = "Adjusted Variance",
-       x = "Mean Relative Abundance",
-       color = "Protein") +
-  theme(legend.position = "right",
-      legend.direction = "vertical",
-      legend.margin=margin())
-dev.off()
-```
-
-##### Coefficient of variation
-- Inverse relationship between mean and CV^2
-```{r}
-dir.create("/Users/ronaldcutler/Dropbox (EinsteinMed)/Sidoli-lab/Projects/Single-cell-histone/Analysis/7-biological-variability/auto/without_technical_variation/with_unmodified_peptidoforms/coefficient_of_variation")
-setwd("/Users/ronaldcutler/Dropbox (EinsteinMed)/Sidoli-lab/Projects/Single-cell-histone/Analysis/7-biological-variability/auto/without_technical_variation/with_unmodified_peptidoforms/coefficient_of_variation")
-
-# plot cv
-df.plot <- bio.var.adj[order(bio.var.adj$cv.bio.adj, decreasing = TRUE),] # order
-df.plot$ptm <- factor(df.plot$ptm,
-                      levels = rev(df.plot$ptm))
-
-pdf("MS1.ratio.log1p.batchCorrect_cv_all.pdf",
-    width = 6,
-    height = 5)
-ggplot(df.plot, aes(x=ptm, y=cv.bio.adj, fill=mean.bio)) +
-    geom_bar(stat="identity", width=0.95, position = position_dodge(width=1)) +
-  geom_text(aes(label=ptm), vjust=0.5, hjust = -0.05, angle=0, position=position_dodge(width=1), size = 3) +
-  coord_flip() +
-  theme_Publication() +
-  scale_fill_distiller(palette = 'RdBu') +
-  labs(y = "Coefficient of Variation",
-       x = "Histone PTM",
-       fill = "Mean\nRelative\nAbundance",
-       subtitle = "Without Technical Noise") +
-  theme(legend.position = "right",
-      legend.direction = "vertical",
-      legend.margin=margin(),
-      axis.text.y=element_blank(),
-      axis.ticks.y=element_blank(),
-      legend.title = element_text(size = 10)) +
-    scale_y_continuous(labels = scales::percent_format(accuracy = 1), 
-                     breaks = c(seq(0, 1.25, by = 0.25)),
-                     limits = c(0, 1.25))
-dev.off()
-
-pdf("MS1.ratio.log1p.batchCorrect_cv_top_20.pdf",
-    width = 6,
-    height = 5)
-ggplot(df.plot[1:20,], aes(x=ptm, y=cv.bio.adj, fill=Protein.Name)) +
-  geom_bar(stat="identity", width=0.95, position = position_dodge(width=1)) +
-  geom_text(aes(label=ptm), vjust=0.5, hjust = -0.05, angle=0, position=position_dodge(width=1), size = 3) +
-  coord_flip() +
-  theme_Publication() +
-  scale_fill_manual(values = protein_colors) +
-  labs(y = "Adjusted Coefficient of Variation",
-       x = "Histone PTM",
-       fill = "Protein") +
-  theme(legend.position = "right",
-      legend.direction = "vertical",
-      legend.margin=margin(),
-      axis.text.y=element_blank(),
-      axis.ticks.y=element_blank())
-dev.off()
-
-# cv vs mean
-# model <- lm(cv.bio.adj ~ poly(mean.bio, 2, raw=TRUE), data=df.plot)
-# coefficients <- coef(model)
-# equation <- sprintf("y = %.2f + %.2f*x + %.2f*x^2",
-#                     coefficients[1], coefficients[2], coefficients[3])
-pdf("MS1.ratio.log1p.batchCorrect_mean_vs_cv.pdf",
-    width = 7,
-    height = 5)
-ggplot(df.plot, aes(x = mean.bio, y = cv.bio.adj)) +
-  geom_point(aes(color = Protein.Name)) +
-  geom_smooth(method = "lm", color = "blue") +
-  stat_cor() +
-  theme_Publication() +
-  labs(y = "Adjusted Coefficient of Variation",
-       x = "Mean Relative Abundance",
-       color = "Protein") +
-  theme(legend.position = "right",
-      legend.direction = "vertical",
-      legend.margin=margin())
-dev.off()
-```
-
 ### Without unmodified peptidoforms
 ```{r}
 # filter out unmodified
@@ -1873,9 +682,9 @@ bio.var.adj.no_unmod$ptm <- ptm_readable_translation(bio.var.adj.no_unmod$ptm)
 - Log2 transform counts are more normally distributed
 - polynomial regression when log transform counts
 ```{r}
-dir.create("/Users/ronaldcutler/Dropbox (EinsteinMed)/Sidoli-lab/Projects/Single-cell-histone/Analysis/7-biological-variability/auto/without_technical_variation/without_unmodified_peptidoforms")
-dir.create("/Users/ronaldcutler/Dropbox (EinsteinMed)/Sidoli-lab/Projects/Single-cell-histone/Analysis/7-biological-variability/auto/without_technical_variation/without_unmodified_peptidoforms/variance")
-setwd("/Users/ronaldcutler/Dropbox (EinsteinMed)/Sidoli-lab/Projects/Single-cell-histone/Analysis/7-biological-variability/auto/without_technical_variation/without_unmodified_peptidoforms/variance")
+dir.create("~/single-cell-histone-ptm/7-biological-variability/auto/without_technical_variation/without_unmodified_peptidoforms")
+dir.create("~/single-cell-histone-ptm/7-biological-variability/auto/without_technical_variation/without_unmodified_peptidoforms/variance")
+setwd("~/single-cell-histone-ptm/7-biological-variability/auto/without_technical_variation/without_unmodified_peptidoforms/variance")
 
 # plot variance
 df.plot <- bio.var.adj.no_unmod[order(bio.var.adj.no_unmod$var.bio.adj, decreasing = TRUE),] # order
@@ -1885,7 +694,7 @@ df.plot$ptm <- factor(df.plot$ptm,
 pdf("MS1.ratio.log1p.batchCorrect_variance_all.pdf",
     width = 6,
     height = 5)
-ggplot(df.plot, aes(x=ptm, y=var.bio.adj, fill=Protein.Name)) +
+ggplot(df.plot, aes(x=ptm, y=var.bio.adj, fill=Protein.Gene)) +
   geom_bar(stat="identity", width=0.95, position = position_dodge(width=1)) +
   geom_text(aes(label=ptm), vjust=0.5, hjust = -0.05, angle=0, position=position_dodge(width=1), size = 3) +
   coord_flip() +
@@ -1904,7 +713,7 @@ dev.off()
 pdf("MS1.ratio.log1p.batchCorrect_variance_top_20.pdf",
     width = 6,
     height = 5)
-ggplot(df.plot[1:20,], aes(x=ptm, y=var.bio.adj, fill=Protein.Name)) +
+ggplot(df.plot[1:20,], aes(x=ptm, y=var.bio.adj, fill=Protein.Gene)) +
   geom_bar(stat="identity", width=0.95, position = position_dodge(width=1)) +
   geom_text(aes(label=ptm), vjust=0.5, hjust = -0.05, angle=0, position=position_dodge(width=1), size = 3) +
   coord_flip() +
@@ -1925,7 +734,7 @@ pdf("MS1.ratio.log1p.batchCorrect_mean_vs_variance.pdf",
     width = 7,
     height = 5)
 ggplot(df.plot, aes(x = mean.bio, y = var.bio.adj)) +
-  geom_point(aes(color = Protein.Name)) +
+  geom_point(aes(color = Protein.Gene)) +
   geom_smooth(method = "lm") +
   stat_cor() +
   theme_Publication() +
@@ -1941,8 +750,8 @@ dev.off()
 ##### Coefficient of variation
 - Inverse relationship between mean and CV^2
 ```{r}
-dir.create("/Users/ronaldcutler/Dropbox (EinsteinMed)/Sidoli-lab/Projects/Single-cell-histone/Analysis/7-biological-variability/auto/without_technical_variation/without_unmodified_peptidoforms/coefficient_of_variation")
-setwd("/Users/ronaldcutler/Dropbox (EinsteinMed)/Sidoli-lab/Projects/Single-cell-histone/Analysis/7-biological-variability/auto/without_technical_variation/without_unmodified_peptidoforms/coefficient_of_variation")
+dir.create("~/single-cell-histone-ptm/7-biological-variability/auto/without_technical_variation/without_unmodified_peptidoforms/coefficient_of_variation")
+setwd("~/single-cell-histone-ptm/7-biological-variability/auto/without_technical_variation/without_unmodified_peptidoforms/coefficient_of_variation")
 
 # plot cv
 df.plot <- bio.var.adj.no_unmod[order(bio.var.adj.no_unmod$cv.bio.adj, decreasing = TRUE),] # order
@@ -1961,7 +770,7 @@ ggplot(df.plot, aes(x=ptm, y=cv.bio.adj, fill=mean.bio)) +
   labs(y = "Adjusted Coefficient of Variation",
        x = "Histone PTM",
        fill = "Mean\nRelative\nAbundance",
-       subtitle = "Without Technical Noise") +
+       subtitle = "After Removal of Technical Noise") +
   theme(legend.position = "right",
       legend.direction = "vertical",
       legend.margin=margin(),
@@ -1969,8 +778,8 @@ ggplot(df.plot, aes(x=ptm, y=cv.bio.adj, fill=mean.bio)) +
       axis.ticks.y=element_blank(),
       legend.title = element_text(size = 10)) +
     scale_y_continuous(labels = scales::percent_format(accuracy = 1), 
-                     breaks = c(seq(0, 1.25, by = 0.25)),
-                     limits = c(0, 1.25))
+                     breaks = c(seq(0, 1, by = 0.25)),
+                     limits = c(0, 1))
 dev.off()
 
 pdf("MS1.ratio.log1p.batchCorrect_cv_top_20.pdf",
@@ -1986,7 +795,7 @@ ggplot(df.plot[1:20,], aes(x=ptm, y=cv.bio.adj, fill=mean.bio)) +
   labs(y = "Adjusted Coefficient of Variation",
        x = "Histone PTM",
        fill = "Mean\nRelative\nAbundance",
-       subtitle = "Without Technical Noise") +
+       subtitle = "After Removal of Technical Noise") +
   theme(legend.position = "right",
       legend.direction = "vertical",
       legend.margin=margin(),
@@ -1994,8 +803,8 @@ ggplot(df.plot[1:20,], aes(x=ptm, y=cv.bio.adj, fill=mean.bio)) +
       axis.ticks.y=element_blank(),
       legend.title = element_text(size = 10)) +
   scale_y_continuous(labels = scales::percent_format(accuracy = 1), 
-                     breaks = c(seq(0, 1.5, by = 0.25)),
-                     limits = c(0, 1.1))
+                     breaks = c(seq(0, 1, by = 0.25)),
+                     limits = c(0, 1))
 dev.off()
 
 # heatmap
@@ -2037,7 +846,7 @@ pdf("MS1.ratio.log1p.batchCorrect_mean_vs_cv.pdf",
     width = 7,
     height = 5)
 ggplot(df.plot, aes(x = mean.bio, y = cv.bio.adj)) +
-  geom_point(aes(color = Protein.Name)) +
+  geom_point(aes(color = Protein.Gene)) +
   geom_smooth(method = "lm", color = "blue") +
   stat_cor() +
   theme_Publication() +

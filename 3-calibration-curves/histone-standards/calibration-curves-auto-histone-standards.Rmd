@@ -1,0 +1,267 @@
+---
+title: "3-calibration-curves: histone standards"
+output: html_document
+editor_options: 
+  chunk_output_type: console
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Preparation
+
+## Libraries
+```{r}
+library(SummarizedExperiment)
+library(tidyr)
+library(dplyr)
+library(tibble)
+library(ggplot2)
+library(pheatmap)
+library(ggpubr)
+library(reshape2)
+library(viridis)
+```
+
+## Functions
+```{r}
+source("~/single-cell-histone-ptm/functions.R")
+```
+
+## Load data
+```{r}
+# metadata
+setwd("~/single-cell-histone-ptm/1-data/single-cell")
+
+coldata <- read.csv("sample-table.csv", 
+               header = TRUE,
+               stringsAsFactors = TRUE)
+coldata[] <- lapply(coldata, as.factor) # make all vars factors
+
+# skyline output
+setwd("~/single-cell-histone-ptm/1-data/single-cell/intensities")
+
+# combine all plates
+df.1 <- read.csv("240129_Skyline_SC_export_auto1_June_hist_stand.csv", 
+               header = TRUE,
+               stringsAsFactors = TRUE,
+               na.strings = "#N/A")
+
+# filter peptides
+df.combine.filter <- filter_peptides_skyline(df.1)
+
+# deconvolute isobaric H4 peptides using fragments
+df.combine.filter.deconv <- deconvolute_h4(df.combine.filter)
+
+# combine into summarized experiment object
+obj <- load_summarized_experiment_prop_eff_skyline(df.combine.filter.deconv, coldata)
+
+# change replicate 4 to 3 to make it easier to read
+obj$replicate <- as.character(obj$replicate)
+obj$replicate[obj$replicate == 4] <- 3
+obj$replicate <- factor(obj$replicate)
+```
+
+## Save object
+```{r}
+setwd("~/single-cell-histone-ptm/3-calibration-curves/auto/histone-standards/unfiltered")
+
+saveRDS(obj, "obj.hist-stand.RDS")
+```
+
+# Calibration curves
+
+## MS1
+```{r}
+setwd("~/single-cell-histone-ptm/3-calibration-curves/auto/histone-standards/unfiltered")
+
+
+# all replicates
+df <- assay(obj, "MS1") %>% 
+  rownames_to_column("id") %>%
+  pivot_longer(
+    cols = -id, # This keeps the 'id' column fixed
+    names_to = "variable",
+    values_to = "value") %>%
+  merge(as.data.frame(colData(obj)), by.x = "variable", by.y = "row.names") %>%
+  filter(multiplier != 100)
+df$id <- gsub(";", " ", df$id)
+
+
+pdf("MS1_calibration_curve_all.pdf",
+    width = 25,
+    height = 25)
+ggplot(df, aes(x = as.numeric(as.character(multiplier)), y = value, color = as.factor(replicate))) +
+  geom_point() +
+  stat_smooth(method = "lm") +
+  stat_cor() +
+  scale_y_continuous(labels = function(x) format(x, scientific = TRUE)) +
+  scale_color_discrete(name = "Replicate") +
+  guides(fill = guide_legend(override.aes = list(shape = NA))) +
+  labs(title = "", x = "Histone Standard (pg)", y = "MS1 intensity") +
+  facet_wrap(.~id, scales = "free", labeller = labeller(id = label_wrap_gen(20))) +
+  theme_Publication(base_size = 12) +
+  scale_x_continuous(breaks = c(0,1,2,4,8), labels = c("0", "10", "20", "40", "80"))
+dev.off()
+
+# replicate 1
+pdf("MS1_calibration_curve_replicate_1.pdf",
+    width = 25,
+    height = 25)
+ggplot(subset(df, replicate == 1), aes(x = as.numeric(as.character(multiplier)), y = value)) +
+  geom_point() +
+  stat_smooth(method = "lm") +
+  stat_cor() +
+  scale_y_continuous(labels = function(x) format(x, scientific = TRUE)) +
+  scale_color_discrete(name = "Replicate") +
+  guides(fill = guide_legend(override.aes = list(shape = NA))) +
+  facet_wrap(.~id, scales = "free", labeller = labeller(id = label_wrap_gen(20))) +
+  theme_Publication(base_size = 12) +
+  labs(title = "", x = "Histone Standard (pg)", y = "MS1 intensity") +
+  scale_x_continuous(breaks = c(0,1,2,4,8), labels = c("0", "10", "20", "40", "80"))
+dev.off()
+
+# replicate 2
+pdf("MS1_calibration_curve_replicate_2.pdf",
+    width = 25,
+    height = 25)
+ggplot(subset(df, replicate == 2), aes(x = as.numeric(as.character(multiplier)), y = value)) +
+  geom_point() +
+  stat_smooth(method = "lm") +
+  stat_cor() +
+  scale_y_continuous(labels = function(x) format(x, scientific = TRUE)) +
+  scale_color_discrete(name = "Replicate") +
+  guides(fill = guide_legend(override.aes = list(shape = NA))) +
+  facet_wrap(.~id, scales = "free", labeller = labeller(id = label_wrap_gen(20))) +
+  theme_Publication(base_size = 12) +
+  labs(title = "", x = "Histone Standard (pg)", y = "MS1 intensity") +
+  scale_x_continuous(breaks = c(0,1,2,4,8), labels = c("0", "10", "20", "40", "80"))
+dev.off()
+
+# replicate 4 (labeld as 3)
+pdf("MS1_calibration_curve_replicate_4.pdf",
+    width = 25,
+    height = 25)
+ggplot(subset(df, replicate == 3), aes(x = as.numeric(as.character(multiplier)), y = value)) +
+  geom_point() +
+  stat_smooth(method = "lm") +
+  stat_cor() +
+  scale_y_continuous(labels = function(x) format(x, scientific = TRUE)) +
+  scale_color_discrete(name = "Replicate") +
+  guides(fill = guide_legend(override.aes = list(shape = NA))) +
+  facet_wrap(.~id, scales = "free", labeller = labeller(id = label_wrap_gen(20))) +
+  theme_Publication(base_size = 12) +
+  labs(title = "", x = "Histone Standard (pg)", y = "MS1 intensity") +
+  scale_x_continuous(breaks = c(0,1,2,4,8), labels = c("0", "10", "20", "40", "80"))
+dev.off()
+
+# distribution of R values
+df$multiplier <- as.numeric(as.character(df$multiplier))
+df.R <- df %>%
+  group_by(id, replicate) %>%
+  summarise(
+    correlation = if(sum(!is.na(value) & !is.na(multiplier) & is.finite(value) & is.finite(multiplier)) > 1) 
+                    cor.test(value, multiplier, use = "complete.obs")$estimate 
+                  else NA,
+    p_value = if(sum(!is.na(value) & !is.na(multiplier) & is.finite(value) & is.finite(multiplier)) > 1) 
+                cor.test(value, multiplier, use = "complete.obs")$p.value 
+              else NA,
+    .groups = "drop"  # Drops the grouping structure from the result
+  )
+
+pdf("MS1_calibration_curve_correlations.pdf",
+    width = 3,
+    height = 3.5)
+ggplot(df.R, aes(x = as.factor(replicate), y = correlation)) +
+  geom_violin(outlier.shape = NA) +
+  geom_jitter(aes(color = p_value), alpha = 0.6) +
+  geom_hline(yintercept = 0.8, linetype='dashed') +
+  scale_color_gradient(low = "blue", high = "red") +
+  theme_Publication(base_size = 12) +
+  theme(legend.position = "top") +
+  labs(x = "Replicate", y = "Pearson R", color = "p-value") +
+  theme(legend.text = element_text(size = 10),
+        legend.key.size = unit(0.5, 'cm'))
+dev.off()
+
+# replicate 1 only
+pdf("MS1_calibration_curve_correlations_rep1.pdf",
+    width = 2.5,
+    height = 3)
+ggplot(subset(df.R, replicate == "1"), aes(x = as.factor(replicate), y = correlation)) +
+  geom_violin(outlier.shape = NA) +
+  geom_jitter(aes(color = p_value), alpha = 0.6) +
+  geom_hline(yintercept = 0.8, linetype='dashed') +
+  scale_color_gradient(low = "blue", high = "red") +
+  theme_Publication(base_size = 12) +
+  theme(legend.position = "top") +
+  labs(x = "Replicate", y = "Pearson R", color = "p-value") +
+  theme(legend.text = element_text(size = 10),
+        legend.key.size = unit(0.5, 'cm'))
+dev.off()
+
+# output distribution to be used for filtering downstream
+write.csv(df.R, "MS1_calibration_curve_correlations.csv", row.names = FALSE)
+```
+
+### Individual peptides
+```{r}
+setwd("~/single-cell-histone-ptm/3-calibration-curves/auto/histone-standards/unfiltered")
+
+
+# all replicates
+df <- assay(obj, "MS1") %>% 
+  rownames_to_column("id") %>%
+  pivot_longer(
+    cols = -id, # This keeps the 'id' column fixed
+    names_to = "variable",
+    values_to = "value") %>%
+  merge(as.data.frame(colData(obj)), by.x = "variable", by.y = "row.names") %>%
+  filter(multiplier != 100)
+df$id <- gsub(";", " ", df$id)
+
+# subset peptides
+rep_peptides <- c("H2A1B-K13[un] K15[ac]", "H31-K9[me2] K14[un]","H31-K18[un] K23[ac]", "H4-K5[ac] K8[un] K12[ac] K16[un]")
+facet_labels <- c("H2AK15Ac", "H3K9Me2", "H3K23Ac", "H4K5AcK12Ac")
+names(facet_labels) <- rep_peptides
+df <- subset(df, id %in% rep_peptides)
+
+pdf("MS1_calibration_curve_representative.pdf",
+    width = 7,
+    height = 3.5)
+ggplot(df, aes(x = as.numeric(as.character(multiplier)), y = value, color = as.factor(replicate))) +
+  geom_point() +
+  stat_smooth(method = "lm") +
+  stat_cor(size = 2) +
+  scale_y_continuous(labels = function(x) format(x, scientific = TRUE)) +
+  scale_color_discrete(name = "Replicate") +
+  guides(fill = guide_legend(override.aes = list(shape = NA))) +
+  labs(title = "", x = "Histone Standard (pg)", y = "MS1 Intensity") +
+  facet_wrap(.~id, scales = "free", nrow = 1, labeller = labeller(id = facet_labels)) +
+  theme_Publication(base_size = 12) +
+  scale_x_continuous(breaks = c(0,1,2,4,8), labels = c("0", "10", "20", "40", "80")) +
+  theme(legend.position = "top") +
+  guides(color = guide_legend( 
+    override.aes=list(shape = 19))) 
+dev.off()
+
+pdf("MS1_calibration_curve_representative_rep1.pdf",
+    width = 7,
+    height = 3.5)
+ggplot(subset(df, replicate == "1"), aes(x = as.numeric(as.character(multiplier)), y = value)) +
+  geom_point() +
+  stat_smooth(method = "lm") +
+  stat_cor(size = 2) +
+  scale_y_continuous(labels = function(x) format(x, scientific = TRUE)) +
+  scale_color_discrete(name = "Replicate") +
+  guides(fill = guide_legend(override.aes = list(shape = NA))) +
+  labs(title = "", x = "Histone Standard (pg)", y = "MS1 Intensity") +
+  facet_wrap(.~id, scales = "free", nrow = 1, labeller = labeller(id = facet_labels)) +
+  theme_Publication(base_size = 12) +
+  scale_x_continuous(breaks = c(0,1,2,4,8), labels = c("0", "10", "20", "40", "80")) +
+  theme(legend.position = "top") +
+  guides(color = guide_legend( 
+    override.aes=list(shape = 19))) 
+dev.off()
+```

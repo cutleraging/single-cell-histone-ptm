@@ -35,12 +35,12 @@ library(RColorBrewer)
 
 ## Functions
 ```{r}
-source("/Users/ronaldcutler/Dropbox\ (EinsteinMed)/Sidoli-lab/Projects/Single-cell-histone/Analysis/functions.R")
+source("~/single-cell-histone-ptm/functions.R")
 ```
 
 ## Load normalized data
 ```{r}
-setwd("/Users/ronaldcutler/Dropbox\ (EinsteinMed)/Sidoli-lab/Projects/Single-cell-histone/Analysis/4-normalization/auto+nabut")
+setwd("~/single-cell-histone-ptm/4-normalization/auto+nabut")
 
 obj.filter.ratio.multi <- readRDS("obj.filter.ratio.multi.RDS")
 
@@ -48,494 +48,10 @@ obj.filter.ratio.multi <- readRDS("obj.filter.ratio.multi.RDS")
 obj.filter.ratio.multi$replicate.unique <- factor(as.numeric(factor(obj.filter.ratio.multi$experiment_replicate)))
 
 # make ptm and proteins readable
-rowData(obj.filter.ratio.multi[["ptm.ratio"]])$Protein.Name.Readable <- protein_readable_translation(rowData(obj.filter.ratio.multi[["ptm.ratio"]])$Protein.Name)
-
 rowData(obj.filter.ratio.multi[["ptm.ratio"]])$PTM.Name.Readable <- ptm_readable_translation(rownames(rowData(obj.filter.ratio.multi[["ptm.ratio"]])))
 
 obj.filter.ratio.multi.1cell <- obj.filter.ratio.multi[,obj.filter.ratio.multi$multiplier == "1"]
 ```
-
-# With 100 cells
-
-## Visualize separation of conditions
-- Since the treatment is nabut, this should cause higher global levels of acetylation
-
-## Setup heatmap
-```{r}
-column_ha = HeatmapAnnotation(Replicate = obj.filter.ratio.multi$replicate.unique,
-                              Multiplier = as.factor(obj.filter.ratio.multi$multiplier),
-                              Condition = obj.filter.ratio.multi$condition,
-                              col = list(Condition = c("control" = "#317ec2",
-                                                       "treat" = "#c03830",
-                                                       "mix" = "gray"),
-                                           Replicate = c("1" = brewer.pal(5, "Set1")[1],
-                                                        "2" = brewer.pal(5, "Set1")[2],
-                                                        "3" = brewer.pal(5, "Set1")[3],
-                                                        "4" = brewer.pal(5, "Set1")[4],
-                                                        "5" = brewer.pal(5, "Set1")[5]),
-                                          Multiplier = c("1" = brewer.pal(4, "Paired")[3],
-                                                         "100" = brewer.pal(4, "Paired")[4]
-                                                      )
-                                        )
-                              )
-```
-
-### All PTMs
-```{r}
-dir.create("/Users/ronaldcutler/Dropbox\ (EinsteinMed)/Sidoli-lab/Projects/Single-cell-histone/Analysis/7-cell-classification/auto+nabut/with_100-cells")
-setwd("/Users/ronaldcutler/Dropbox\ (EinsteinMed)/Sidoli-lab/Projects/Single-cell-histone/Analysis/7-cell-classification/auto+nabut/with_100-cells")
-
-# plot ratios
-pdf("MS1.ratio.log1p.batchCorrect_all-PTM_heatmap.pdf",
-    width = 10,
-    height = 10)
-Heatmap(t(scale(t(assay(obj.filter.ratio.multi[["ptm.ratio"]], "MS1.ratio.log1p.batchCorrect")), center = FALSE, scale = FALSE)),
-        top_annotation = column_ha,
-        heatmap_legend_param = list(title = "Normalized Peptide Ratio"),
-        cluster_rows = TRUE,
-        cluster_columns = TRUE,
-        show_column_names = FALSE,
-        split = rowData(obj.filter.ratio.multi[["ptm.ratio"]])$Protein.Name.Readable,
-        cluster_column_slices = TRUE,
-        cluster_row_slices = TRUE,
-        row_names_gp = gpar(fontsize = 10))
-dev.off()
-
-# plot Z-score
-pdf("MS1.ratio.log1p.batchCorrect_all-PTM_scaled-heatmap.pdf",
-    width = 10,
-    height = 10)
-Heatmap(t(scale(t(assay(obj.filter.ratio.multi[["ptm.ratio"]], "MS1.ratio.log1p.batchCorrect")), center = TRUE, scale = TRUE)),
-        top_annotation = column_ha,
-        heatmap_legend_param = list(title = "Z-score"),
-        cluster_rows = TRUE,
-        cluster_columns = TRUE,
-        show_column_names = FALSE,
-        split = rowData(obj.filter.ratio.multi[["ptm.ratio"]])$Protein.Name.Readable,
-        cluster_column_slices = TRUE,
-        cluster_row_slices = TRUE,
-        row_names_gp = gpar(fontsize = 10))
-dev.off()
-
-# PCA
-p <- pca(assay(obj.filter.ratio.multi[["ptm.ratio"]], "MS1.ratio.log1p.batchCorrect"),
-         metadata = colData(obj.filter.ratio.multi),
-         center = TRUE, 
-         scale = TRUE)
-
-pdf("MS1.ratio.log1p.batchCorrect_all-PTM_screeplot.pdf",
-    width = 5,
-    height = 5)
-screeplot(p,
-          components = getComponents(p)[1:10])
-dev.off()
-
-pdf("MS1.ratio.log1p.batchCorrect_all-PTM_eigencor.pdf",
-    width = 5,
-    height = 5)
-eigencorplot(p,
-             main = "Principle component correlations",
-             cexMain = 1.5,
-             metavars = c("replicate.unique", "date", "multiplier", "experiment", "condition", "total.ms1"),
-             col = viridis(100),
-             colCorval = 'firebrick',
-             fontCorval = 2,
-             cexCorval = 0.5,
-             rotLabX = 45,
-             posColKey = 'top')
-dev.off()
-
-pdf("MS1.ratio.log1p.batchCorrect_all-PTM_pca.pdf",
-    width = 4,
-    height = 5)
-biplot(p,
-       colby = "condition", 
-       shape = "multiplier",
-       legendPosition = 'top',
-       hline = 0, 
-       vline = 0,
-       lab = NULL) +
-  labs(color = "Condition",
-       shape = "# Cells") +
-  theme_Publication() +
-  theme(legend.box="vertical", 
-        legend.margin=margin()) +
-  scale_color_manual(values = c("control" = "#317ec2",
-                                "treat" = "#c03830",
-                                "mix" = "gray"),
-                     labels = c("Control",
-                                "Mixed",
-                                "Treated"))
-dev.off()
-```
-
-### Top 25% variable PTMs
-- This needs to use CV not variance
-```{r}
-setwd("/Users/ronaldcutler/Dropbox\ (EinsteinMed)/Sidoli-lab/Projects/Single-cell-histone/Analysis/7-cell-classification/auto+nabut/with_100-cells")
-
-# get top 25% variable
-top25 <- names(sort(rowVars(assay(obj.filter.ratio.multi[["ptm.ratio"]], "MS1.ratio.log1p.batchCorrect")), decreasing = TRUE))[1:(ceiling(nrow(obj.filter.ratio.multi[["ptm.ratio"]])*0.25))]
-
-df <- assay(obj.filter.ratio.multi[["ptm.ratio"]], "MS1.ratio.log1p.batchCorrect")[rownames(obj.filter.ratio.multi[["ptm.ratio"]]) %in% top25,]
-
-histone_proteins <- sub("^([^-]+)-.*$", "\\1", rownames(df))
-
-# plot ratios
-pdf("MS1.ratio.log1p.batchCorrect_top25_heatmap.pdf",
-    width = 10,
-    height = 5)
-Heatmap(t(scale(t(df), center = FALSE, scale = FALSE)),
-        top_annotation = column_ha,
-        heatmap_legend_param = list(title = "Normalized Peptide Ratio"),
-        cluster_rows = TRUE,
-        cluster_columns = TRUE,
-        show_column_names = FALSE,
-        split = histone_proteins,
-        cluster_column_slices = TRUE,
-        cluster_row_slices = TRUE,
-        row_names_gp = gpar(fontsize = 10))
-dev.off()
-
-# plot Z-score
-pdf("MS1.ratio.log1p.batchCorrect_top25_scaled-heatmap.pdf",
-    width = 10,
-    height = 5)
-Heatmap(t(scale(t(df), center = TRUE, scale = TRUE)),
-        top_annotation = column_ha,
-        heatmap_legend_param = list(title = "Z-score"),
-        cluster_rows = TRUE,
-        cluster_columns = TRUE,
-        show_column_names = FALSE,
-        split = histone_proteins,
-        cluster_column_slices = TRUE,
-        cluster_row_slices = TRUE,
-        row_names_gp = gpar(fontsize = 10))
-dev.off()
-```
-
-### Global PTMs
-```{r}
-setwd("/Users/ronaldcutler/Dropbox\ (EinsteinMed)/Sidoli-lab/Projects/Single-cell-histone/Analysis/7-cell-classification/auto+nabut/with_100-cells")
-
-# plot ratios
-pdf("MS1.global.ratio.batchCorrect_global_heatmap.pdf",
-    width = 8,
-    height = 3)
-Heatmap(t(scale(t(assay(obj.filter.ratio.multi[["global.ratio"]], "MS1.ratio.log1p.batchCorrect")), center = FALSE, scale = FALSE)),
-        top_annotation = column_ha,
-        heatmap_legend_param = list(title = "Normalized Peptide Ratio"),
-        cluster_rows = TRUE,
-        cluster_columns = TRUE,
-        show_column_names = FALSE,
-        #split = histone_proteins,
-        cluster_column_slices = TRUE,
-        cluster_row_slices = TRUE,
-        row_names_gp = gpar(fontsize = 10))
-dev.off()
-
-# plot Z-score
-pdf("MS1.global.ratio.batchCorrect_global_scaled-heatmap.pdf",
-    width = 8,
-    height = 3)
-Heatmap(t(scale(t(assay(obj.filter.ratio.multi[["global.ratio"]], "MS1.ratio.log1p.batchCorrect")), center = TRUE, scale = TRUE)),
-        top_annotation = column_ha,
-        heatmap_legend_param = list(title = "Z-score"),
-        cluster_rows = TRUE,
-        cluster_columns = TRUE,
-        show_column_names = FALSE,
-        #split = histone_proteins,
-        cluster_column_slices = TRUE,
-        cluster_row_slices = TRUE,
-        row_names_gp = gpar(fontsize = 10))
-dev.off()
-```
-
-### H4 ac
-```{r}
-setwd("/Users/ronaldcutler/Dropbox\ (EinsteinMed)/Sidoli-lab/Projects/Single-cell-histone/Analysis/7-cell-classification/auto+nabut/with_100-cells")
-
-# plot ratios
-rownames(obj.filter.ratio.multi[["h4.ac.ratio"]]) <- c("0-ac", "Mono-ac", "Di-ac", "Tri-ac", "Tetra-ac")
-
-pdf("MS1.h4.ac.ratio.batchCorrect_heatmap.pdf",
-    width = 8,
-    height = 3)
-Heatmap(t(scale(t(assay(obj.filter.ratio.multi[["h4.ac.ratio"]], "MS1.ratio.log1p.batchCorrect")), center = FALSE, scale = FALSE)),
-        top_annotation = column_ha,
-        heatmap_legend_param = list(title = "Normalized Peptide Ratio"),
-        cluster_rows = FALSE,
-        cluster_columns = TRUE,
-        show_column_names = FALSE,
-        #split = histone_proteins,
-        cluster_column_slices = TRUE,
-        cluster_row_slices = TRUE,
-        row_names_gp = gpar(fontsize = 10))
-dev.off()
-
-# plot Z-score
-pdf("MS1.h4.ac.ratio.batchCorrect_scaled-heatmap.pdf",
-    width = 8,
-    height = 3)
-Heatmap(t(scale(t(assay(obj.filter.ratio.multi[["h4.ac.ratio"]], "MS1.ratio.log1p.batchCorrect")), center = TRUE, scale = TRUE)),
-        top_annotation = column_ha,
-        heatmap_legend_param = list(title = "Z-score"),
-        cluster_rows = FALSE,
-        cluster_columns = TRUE,
-        show_column_names = FALSE,
-        #split = histone_proteins,
-        cluster_column_slices = TRUE,
-        cluster_row_slices = TRUE,
-        row_names_gp = gpar(fontsize = 10))
-dev.off()
-
-# PCA
-p <- pca(assay(obj.filter.ratio.multi[["h4.ac.ratio"]], "MS1.ratio.log1p.batchCorrect"),
-         metadata = colData(obj.filter.ratio.multi),
-         center = TRUE, 
-         scale = TRUE,
-         removeVar = 0)
-
-pdf("h4.ac.ratio.log1p.batchCorrect_all-PTM_eigencor.pdf",
-    width = 5,
-    height = 5)
-eigencorplot(p,
-             getComponents(p, seq_len(5)),
-             main = "Principle component correlations",
-             cexMain = 1.5,
-             metavars = c("replicate.unique", "date", "run_id", "experiment", "condition", "total.ms1"),
-             col = viridis(100),
-             colCorval = 'firebrick',
-             fontCorval = 2,
-             cexCorval = 0.5,
-             rotLabX = 45,
-             posColKey = 'top')
-dev.off()
-
-pdf("h4.ac.ratio.log1p.batchCorrect_all-PTM_pca.pdf",
-    width = 4,
-    height = 5)
-biplot(p,
-       colby = "condition", 
-       shape = "multiplier",
-       legendPosition = 'top',
-       hline = 0, 
-       vline = 0,
-       lab = NULL) +
-  labs(color = "Condition",
-       shape = "# Cells") +
-  theme_Publication() +
-  theme(legend.box="vertical", 
-        legend.margin=margin()) +
-  scale_color_manual(values = c("control" = "#317ec2",
-                                "treat" = "#c03830",
-                                "mix" = "gray"),
-                     labels = c("Control",
-                                "Mixed",
-                                "Treated"))
-dev.off()
-```
-
-
-## KNN class training and prediction
-- Train a knn classifer on the PTMs found to be significantly different between control and nabut
-- Using bulk samples may distort classification as they were found to cluster differently
-
-#### Training
-```{r}
-setwd("/Users/ronaldcutler/Dropbox\ (EinsteinMed)/Sidoli-lab/Projects/Single-cell-histone/Analysis/7-cell-classification/auto+nabut/with_100-cells")
-
-# split training into 50% of data (control and treat)
-control_names <- rownames(colData(obj.filter.ratio.multi)[obj.filter.ratio.multi$condition == "control",])
-treat_names <- rownames(colData(obj.filter.ratio.multi)[obj.filter.ratio.multi$condition == "treat",])
-
-# Calculate the size of 50% of the vector
-size_50_percent_control <- round(length(control_names) * 0.5)
-size_50_percent_treat <- round(length(treat_names) * 0.5)
-
-# Randomly select 50% of the names for training
-set.seed(123)
-control_names_training <- sample(control_names, size = size_50_percent_control)
-treat_names_training <- sample(treat_names, size = size_50_percent_treat)
-
-# Assign the remaining 25% of the names for testing
-control_names_testing <- setdiff(control_names, control_names_training)
-treat_names_testing <- setdiff(treat_names, treat_names_training)
-
-# Assign labels of each condition
-train_condition <- factor(colData(obj.filter.ratio.multi)[colnames(obj.filter.ratio.multi[["h4.ac.ratio"]]) %in% c(control_names_training, treat_names_training),]$condition)
-test_condtion <- factor(colData(obj.filter.ratio.multi)[colnames(obj.filter.ratio.multi[["h4.ac.ratio"]]) %in% c(control_names_testing, treat_names_testing),]$condition)
-
-# get scaled h4 data
-train <- scale(t(assay(obj.filter.ratio.multi[["h4.ac.ratio"]], "MS1.ratio.log1p.batchCorrect")[,c(control_names_training, treat_names_training)]))
-test <- scale(t(assay(obj.filter.ratio.multi[["h4.ac.ratio"]], "MS1.ratio.log1p.batchCorrect")[,c(control_names_testing, treat_names_testing)]))
-
-# eval prediction model
-knn.pred.known <- knn(train = train, 
-                test = test,
-                cl = train_condition, 
-                k = 2)
-names(knn.pred.known) <- c(control_names_testing, treat_names_testing)
-
-res <- table(test_condtion, knn.pred.known)
-accuracy <- sum(diag(res))/length(test_condtion)
-
-# assign results
-df <- colData(obj.filter.ratio.multi) %>%
-  as.data.frame() %>%
-  rownames_to_column("row_names") %>% # Convert rownames to a column for matching
-  mutate(
-    knn.training.split = case_when(row_names %in% c(control_names_training, treat_names_training) ~ "train", 
-                          row_names %in% c(control_names_testing, treat_names_testing) ~ "test",
-                          TRUE ~ NA_character_))
-obj.filter.ratio.multi$knn.training.split <- df$knn.training.split
-
-# plot
-column_ha = HeatmapAnnotation(Multiplier = as.factor(obj.filter.ratio.multi$multiplier),
-                              "KNN Training" = as.factor(obj.filter.ratio.multi$knn.training.split),
-                              Condition = obj.filter.ratio.multi$condition,
-                               col = list("KNN Training" = c("train" = brewer.pal(3, "Set2")[1],
-                                                             "test" = brewer.pal(3, "Set2")[2]),
-                                           Multiplier = c("1" = brewer.pal(3, "Paired")[1],
-                                                         "100" = brewer.pal(3, "Paired")[2]),
-                                          Condition = c("control" = "#317ec2",
-                                                       "treat" = "#c03830",
-                                                       "mix" = "gray")
-                                          )
-                              )
-
-pdf("MS1.h4.ac.ratio.batchCorrect_knn-training_scaled-heatmap.pdf",
-    width = 8,
-    height = 3)
-Heatmap(t(scale(t(assay(obj.filter.ratio.multi[["h4.ac.ratio"]], "MS1.ratio.log1p.batchCorrect")), center = TRUE, scale = TRUE)),
-        top_annotation = column_ha,
-        heatmap_legend_param = list(title = "Z-score"),
-        cluster_rows = FALSE,
-        cluster_columns = TRUE,
-        show_column_names = FALSE,
-        #split = histone_proteins,
-        cluster_column_slices = TRUE,
-        cluster_row_slices = TRUE,
-        row_names_gp = gpar(fontsize = 10))
-dev.off()
-```
-
-#### Prediction
-```{r}
-setwd("/Users/ronaldcutler/Dropbox\ (EinsteinMed)/Sidoli-lab/Projects/Single-cell-histone/Analysis/7-cell-classification/auto+nabut/with_100-cells")
-
-# Split data into known and unknown
-train_names <- colnames(obj.filter.ratio.multi[["h4.ac.ratio"]])[obj.filter.ratio.multi$condition != "mix"]
-test_names <- colnames(obj.filter.ratio.multi[["h4.ac.ratio"]])[obj.filter.ratio.multi$condition == "mix"]
-
-# Assign labels of each condition
-train_labels <- factor(colData(obj.filter.ratio.multi)[colnames(obj.filter.ratio.multi[["h4.ac.ratio"]]) %in% train_names,]$condition)
-
-# get scaled h4 data
-train <- scale(t(assay(obj.filter.ratio.multi[["h4.ac.ratio"]], "MS1.ratio.log1p.batchCorrect")[,train_names]))
-test <- scale(t(assay(obj.filter.ratio.multi[["h4.ac.ratio"]], "MS1.ratio.log1p.batchCorrect")[,test_names]))
-
-# eval prediction model
-knn.pred.mix <- knn(train = train, 
-                test = test,
-                cl = train_labels, 
-                k = 2)
-
-names(knn.pred.mix) <- test_names
-
-# assign results
-df <- colData(obj.filter.ratio.multi) %>%
-  as.data.frame() %>%
-  rownames_to_column("row_names") %>% # Convert rownames to a column for matching
-  mutate(
-    knn.mix.predict = case_when(row_names %in%  names(knn.pred.mix)[knn.pred.mix == "control"] ~ "control", 
-                          row_names %in% names(knn.pred.mix)[knn.pred.mix == "treat"] ~ "treat",
-                          TRUE ~ NA_character_))
-obj.filter.ratio.multi$knn.mix.predict <- df$knn.mix.predict
-
-# make new condition column that merges known and predicted labels
-condition.temp <- as.character(obj.filter.ratio.multi$condition)
-condition.temp[condition.temp == "mix"] <- NA
-obj.filter.ratio.multi$condition.predict <- coalesce(condition.temp, obj.filter.ratio.multi$knn.mix.predict)
-
-# heatmap
-column_ha = HeatmapAnnotation(Multiplier = as.factor(obj.filter.ratio.multi$multiplier),
-                              Replicate = obj.filter.ratio.multi$replicate.unique,
-                              "KNN Training" = as.factor(obj.filter.ratio.multi$knn.training.split),
-                              "KNN Prediction" = as.factor(obj.filter.ratio.multi$knn.mix.predict),
-                              "Known Condition" = obj.filter.ratio.multi$condition,
-                               col = list(Replicate = c("1" = brewer.pal(5, "Set1")[1],
-                                                        "2" = brewer.pal(5, "Set1")[2],
-                                                        "3" = brewer.pal(5, "Set1")[3],
-                                                        "4" = brewer.pal(5, "Set1")[4],
-                                                        "5" = brewer.pal(5, "Set1")[5]),
-                                          Multiplier = c("1" = brewer.pal(4, "Paired")[3],
-                                                         "100" = brewer.pal(4, "Paired")[4]),
-                                          "KNN Prediction" = c("control" = "#317ec2",
-                                                               "treat" = "#c03830"),
-                                          "KNN Training" = c("train" = brewer.pal(3, "Set2")[1],
-                                                             "test" = brewer.pal(3, "Set2")[2]),
-                                          "Known Condition" = c("control" = "#317ec2",
-                                                       "treat" = "#c03830",
-                                                       "mix" = "gray")
-                                          )
-                              )
-
-pdf("MS1.h4.ac.ratio.batchCorrect_knn-predict_scaled-heatmap.pdf",
-    width = 8,
-    height = 3)
-Heatmap(t(scale(t(assay(obj.filter.ratio.multi[["h4.ac.ratio"]], "MS1.ratio.log1p.batchCorrect")), center = TRUE, scale = TRUE)),
-        top_annotation = column_ha,
-        heatmap_legend_param = list(title = "Z-score"),
-        cluster_rows = FALSE,
-        cluster_columns = TRUE,
-        show_column_names = FALSE,
-        #split = histone_proteins,
-        cluster_column_slices = TRUE,
-        cluster_row_slices = TRUE,
-        row_names_gp = gpar(fontsize = 10))
-dev.off()
-
-# PCA
-p <- pca(assay(obj.filter.ratio.multi[["ptm.ratio"]], "MS1.ratio.log1p.batchCorrect"),
-         metadata = colData(obj.filter.ratio.multi),
-         center = TRUE, 
-         scale = TRUE)
-
-pdf("MS1.h4.ac.ratio.batchCorrect_knn-predict_pca.pdf",
-    width = 5,
-    height = 5)
-biplot(p,
-       colby = "condition.predict", 
-       legendPosition = 'top',
-       hline = 0, 
-       vline = 0,
-       lab = NULL,
-       encircle = TRUE,
-       encircleFillKey = c("control" = "#317ec2",
-                                "treat" = "#c03830"),
-       encircleAlpha = 0.2) +
-  labs(color = "Condition") +
-  theme_Publication() +
-  theme(legend.box="vertical", 
-        legend.margin=margin()) +
-  scale_color_manual(values = c("control" = "#317ec2",
-                                "treat" = "#c03830"),
-                     labels = c("Control",
-                                "Treated"))
-dev.off()
-```
-
-#### Save object
-```{r}
-setwd("/Users/ronaldcutler/Dropbox\ (EinsteinMed)/Sidoli-lab/Projects/Single-cell-histone/Analysis/7-cell-classification/auto+nabut/with_100-cells")
-
-saveRDS(obj.filter.ratio.multi, "obj.filter.ratio.multi.RDS")
-```
-
-
-
-# Without 100 cells
 
 ## Visualize separation of conditions
 - Since the treatment is nabut, this should cause higher global levels of acetylation
@@ -556,19 +72,19 @@ column_ha = HeatmapAnnotation(Replicate = obj.filter.ratio.multi.1cell$replicate
 
 ### All PTMs
 ```{r}
-dir.create("/Users/ronaldcutler/Dropbox\ (EinsteinMed)/Sidoli-lab/Projects/Single-cell-histone/Analysis/7-cell-classification/auto+nabut/without_100-cells")
-setwd("/Users/ronaldcutler/Dropbox\ (EinsteinMed)/Sidoli-lab/Projects/Single-cell-histone/Analysis/7-cell-classification/auto+nabut/without_100-cells")
+dir.create("~/single-cell-histone-ptm/8-cell-classification/auto+nabut/without_100-cells")
+setwd("~/single-cell-histone-ptm/8-cell-classification/auto+nabut/without_100-cells")
 
 # plot ratios
 pdf("MS1.ratio.log1p.batchCorrect_all-PTM_heatmap.pdf",
-    width = 10,
-    height = 10)
+    width = 20,
+    height = 20)
 Heatmap(t(scale(t(assay(obj.filter.ratio.multi.1cell[["ptm.ratio"]], "MS1.ratio.log1p.batchCorrect")), center = FALSE, scale = FALSE)),
         top_annotation = column_ha,
         heatmap_legend_param = list(title = "Normalized Peptide Ratio"),
         cluster_rows = TRUE,
         cluster_columns = TRUE,
-        show_column_names = FALSE,
+        show_column_names = TRUE,
         split = rowData(obj.filter.ratio.multi.1cell[["ptm.ratio"]])$Protein.Name.Readable,
         cluster_column_slices = TRUE,
         cluster_row_slices = TRUE,
@@ -645,7 +161,7 @@ dev.off()
 
 ### Top 25% variable PTMs
 ```{r}
-setwd("/Users/ronaldcutler/Dropbox\ (EinsteinMed)/Sidoli-lab/Projects/Single-cell-histone/Analysis/7-cell-classification/auto+nabut/without_100-cells")
+setwd("~/single-cell-histone-ptm/8-cell-classification/auto+nabut/without_100-cells")
 
 # get top 25% variable
 top25 <- names(sort(rowVars(assay(obj.filter.ratio.multi.1cell[["ptm.ratio"]], "MS1.ratio.log1p.batchCorrect")), decreasing = TRUE))[1:(ceiling(nrow(obj.filter.ratio.multi.1cell[["ptm.ratio"]])*0.25))]
@@ -689,7 +205,7 @@ dev.off()
 
 ### Global PTMs
 ```{r}
-setwd("/Users/ronaldcutler/Dropbox\ (EinsteinMed)/Sidoli-lab/Projects/Single-cell-histone/Analysis/7-cell-classification/auto+nabut/without_100-cells")
+setwd("~/single-cell-histone-ptm/8-cell-classification/auto+nabut/without_100-cells")
 
 # plot ratios
 pdf("MS1.global.ratio.batchCorrect_heatmap.pdf",
@@ -726,7 +242,7 @@ dev.off()
 
 ### H4 ac
 ```{r}
-setwd("/Users/ronaldcutler/Dropbox\ (EinsteinMed)/Sidoli-lab/Projects/Single-cell-histone/Analysis/7-cell-classification/auto+nabut/without_100-cells")
+setwd("~/single-cell-histone-ptm/8-cell-classification/auto+nabut/without_100-cells")
 
 # plot ratios
 rownames(obj.filter.ratio.multi.1cell[["h4.ac.ratio"]]) <- c("0-ac", "Mono-ac", "Di-ac", "Tri-ac", "Tetra-ac")
@@ -769,18 +285,43 @@ p <- pca(assay(obj.filter.ratio.multi.1cell[["h4.ac.ratio"]], "MS1.ratio.log1p.b
          scale = TRUE,
          removeVar = 0)
 
+pdf("MS1.h4.ac.ratio.log1p.batchCorrect_all-PTM_eigencor.pdf",
+    width = 5,
+    height = 5)
+eigencorplot(p,
+             getComponents(p, seq_len(5)),
+             main = "Principle component correlations",
+             cexMain = 1.5,
+             metavars = c("replicate.unique", "date", "run_id", "experiment", "condition", "total.ms1"),
+             col = viridis(100),
+             colCorval = 'firebrick',
+             fontCorval = 2,
+             cexCorval = 0.5,
+             rotLabX = 45,
+             posColKey = 'top')
+dev.off()
+
 pdf("MS1.h4.ac.ratio.batchCorrect_pca.pdf",
     width = 5,
     height = 5)
 biplot(p,
        colby = "condition", 
-       shape = "multiplier",
-       legendPosition = 'right',
+       #shape = "replicate.unique",
+       legendPosition = 'top',
        hline = 0, 
        vline = 0,
-       gridlines.major = FALSE, 
-       gridlines.minor = FALSE,
-       lab = NULL)
+       lab = NULL) +
+  labs(color = "Condition",
+       shape = "Replicate") +
+  theme_Publication() +
+  theme(legend.box="vertical", 
+        legend.margin=margin()) +
+  scale_color_manual(values = c("control" = "#317ec2",
+                                "treat" = "#c03830",
+                                "mix" = "gray"),
+                     labels = c("Control",
+                                "Mixed",
+                                "Treated"))
 dev.off()
 ```
 
@@ -791,7 +332,7 @@ dev.off()
 
 #### Training
 ```{r}
-setwd("/Users/ronaldcutler/Dropbox\ (EinsteinMed)/Sidoli-lab/Projects/Single-cell-histone/Analysis/7-cell-classification/auto+nabut/without_100-cells")
+setwd("~/single-cell-histone-ptm/8-cell-classification/auto+nabut/without_100-cells")
 
 # split training into 50% of data (control and treat)
 control_names <- rownames(colData(obj.filter.ratio.multi.1cell)[obj.filter.ratio.multi.1cell$condition == "control",])
@@ -799,14 +340,14 @@ treat_names <- rownames(colData(obj.filter.ratio.multi.1cell)[obj.filter.ratio.m
 
 # Calculate the size of 75% of the vector
 size_50_percent_control <- round(length(control_names) * 0.5)
-size_50_percent_control <- round(length(treat_names) * 0.5)
+size_50_percent_treat <- round(length(treat_names) * 0.5)
 
-# Randomly select 75% of the names for training
+# Randomly select x% of the names for training
 set.seed(123)
 control_names_training <- sample(control_names, size = size_50_percent_control)
 treat_names_training <- sample(treat_names, size = size_50_percent_treat)
 
-# Assign the remaining 25% of the names for testing
+# Assign the remaining x% of the names for testing
 control_names_testing <- setdiff(control_names, control_names_training)
 treat_names_testing <- setdiff(treat_names, treat_names_training)
 
@@ -869,7 +410,7 @@ dev.off()
 
 #### Prediction
 ```{r}
-setwd("/Users/ronaldcutler/Dropbox\ (EinsteinMed)/Sidoli-lab/Projects/Single-cell-histone/Analysis/7-cell-classification/auto+nabut/without_100-cells")
+setwd("~/single-cell-histone-ptm/8-cell-classification/auto+nabut/without_100-cells")
 
 # Split data into known and unknown
 train_names <- colnames(obj.filter.ratio.multi.1cell[["h4.ac.ratio"]])[obj.filter.ratio.multi.1cell$condition != "mix"]
@@ -975,30 +516,30 @@ dev.off()
 
 #### Save object
 ```{r}
-setwd("/Users/ronaldcutler/Dropbox\ (EinsteinMed)/Sidoli-lab/Projects/Single-cell-histone/Analysis/7-cell-classification/auto+nabut/without_100-cells")
+setwd("~/single-cell-histone-ptm/8-cell-classification/auto+nabut/without_100-cells")
 
 saveRDS(obj.filter.ratio.multi.1cell, "obj.filter.ratio.multi.1cell.RDS")
 ```
 
-# Integrate KNN without 100 cell results into full object
+# Integrate KNN without into full object
 ```{r}
-df <- colData(obj.filter.ratio.multi) %>%
+df <- colData(obj.filter.ratio.multi.1cell) %>%
   as.data.frame() %>%
   rownames_to_column("row_names") %>% # Convert rownames to a column for matching
   mutate(
     knn.mix.predict = case_when(row_names %in%  names(knn.pred.mix)[knn.pred.mix == "control"] ~ "control", 
                           row_names %in% names(knn.pred.mix)[knn.pred.mix == "treat"] ~ "treat",
                           TRUE ~ NA_character_))
-obj.filter.ratio.multi$knn.mix.predict <- df$knn.mix.predict
+obj.filter.ratio.multi.1cell$knn.mix.predict <- df$knn.mix.predict
 
 # make new condition column that merges known and predicted labels
-condition.temp <- as.character(obj.filter.ratio.multi$condition)
+condition.temp <- as.character(obj.filter.ratio.multi.1cell$condition)
 condition.temp[condition.temp == "mix"] <- NA
-obj.filter.ratio.multi$condition.predict <- coalesce(condition.temp, obj.filter.ratio.multi$knn.mix.predict)
+obj.filter.ratio.multi.1cell$condition.predict <- coalesce(condition.temp, obj.filter.ratio.multi.1cell$knn.mix.predict)
 
 # PCA
-p <- pca(assay(obj.filter.ratio.multi[["ptm.ratio"]], "MS1.ratio.log1p.batchCorrect"),
-         metadata = colData(obj.filter.ratio.multi),
+p <- pca(assay(obj.filter.ratio.multi.1cell[["ptm.ratio"]], "MS1.ratio.log1p.batchCorrect"),
+         metadata = colData(obj.filter.ratio.multi.1cell),
          center = TRUE, 
          scale = TRUE)
 
@@ -1007,7 +548,6 @@ pdf("MS1.ptm.ratio.batchCorrect_knn-predict_pca_integrated.pdf",
     height = 5)
 biplot(p,
        colby = "condition.predict", 
-       shape = "multiplier",
        legendPosition = 'top',
        hline = 0, 
        vline = 0,
@@ -1016,8 +556,7 @@ biplot(p,
        encircleFillKey = c("control" = "#317ec2",
                            "treat" = "#c03830"),
        encircleAlpha = 0.2) +
-  labs(color = "Condition",
-       shape = "# Cells") +
+  labs(color = "Condition") +
   theme_Publication() +
   theme(legend.box="vertical", 
         legend.margin=margin()) +
@@ -1030,7 +569,7 @@ dev.off()
 
 ## Save integrated object
 ```{r}
-setwd("/Users/ronaldcutler/Dropbox\ (EinsteinMed)/Sidoli-lab/Projects/Single-cell-histone/Analysis/7-cell-classification/auto+nabut")
+setwd("~/single-cell-histone-ptm/8-cell-classification/auto+nabut")
 
 saveRDS(obj.filter.ratio.multi, "obj.filter.ratio.multi.RDS")
 ```

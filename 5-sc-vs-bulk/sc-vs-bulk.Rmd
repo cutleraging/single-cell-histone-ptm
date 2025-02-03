@@ -29,14 +29,14 @@ library(stringr)
 
 ## Functions
 ```{r}
-source("/Users/ronaldcutler/Dropbox\ (EinsteinMed)/Sidoli-lab/Projects/Single-cell-histone/Analysis/functions.R")
+source("~/single-cell-histone-ptm/Analysis/functions.R")
 ```
 
 ## Load data
 
 ### Single cells and 100 cell bulk
 ```{r}
-setwd("/Users/ronaldcutler/Dropbox\ (EinsteinMed)/Sidoli-lab/Projects/Single-cell-histone/Analysis/4-normalization/auto")
+setwd("~/single-cell-histone-ptm/Analysis/4-normalization/auto")
 
 obj <- readRDS("obj.filter.RDS")
 
@@ -47,12 +47,12 @@ obj.filter.ratio.multi <- readRDS("obj.filter.ratio.multi.RDS")
 - singlePTM data
 - from using -50 and -70 CV. Needs to be extracted from -50 though
 ```{r}
-setwd("/Users/ronaldcutler/Dropbox\ (EinsteinMed)/Sidoli-lab/Projects/Single-cell-histone/Analysis/1-data/bulk/230816_nabut_bulk_test")
+setwd("~/single-cell-histone-ptm/Analysis/1-data/bulk/230816_nabut_bulk_test")
 
 nabut_bulk_230816 <- read.csv("histone_ratios_single_PTMs.csv", header = TRUE, row.names = 1)
 rownames(nabut_bulk_230816) <- sub("(H\\d+)(K\\d+)([a-z]+\\d*)", "\\1-\\2[\\3]", rownames(nabut_bulk_230816))
 
-setwd("/Users/ronaldcutler/Dropbox\ (EinsteinMed)/Sidoli-lab/Projects/Single-cell-histone/Analysis/1-data/bulk/231012_broad")
+setwd("~/single-cell-histone-ptm/Analysis/1-data/bulk/231012_broad")
 
 nabut_bulk_231012 <- read.csv("histone_ratios_single_PTMs.csv", header = TRUE, row.names = 1)
 rownames(nabut_bulk_231012) <- sub("(H\\d+)(K\\d+)([a-z]+\\d*)", "\\1-\\2[\\3]", rownames(nabut_bulk_231012))
@@ -60,7 +60,7 @@ rownames(nabut_bulk_231012) <- sub("(H\\d+)(K\\d+)([a-z]+\\d*)", "\\1-\\2[\\3]",
 
 ### Bulk from Simone's previous studes
 ```{r}
-setwd("/Users/ronaldcutler/Dropbox\ (EinsteinMed)/Sidoli-lab/Projects/Single-cell-histone/Analysis/1-data/bulk/simone")
+setwd("~/single-cell-histone-ptm/Analysis/1-data/bulk/simone")
 
 bottomup <- read.csv("Bottom-up vs middle-down (Anal Chem 2015) - cleaned data.csv", header = TRUE)
 
@@ -100,10 +100,10 @@ dialowres.sptm <- dialowres %>%
 
 ### MS1
 ```{r}
-setwd("/Users/ronaldcutler/Dropbox\ (EinsteinMed)/Sidoli-lab/Projects/Single-cell-histone/Analysis/5-sc-vs-bulk")
+setwd("~/single-cell-histone-ptm/Analysis/5-sc-vs-bulk")
 
 # correlation all replicates
-df <- assay(obj, "MS1.log2.center.impute.batchCorrect") %>% 
+df <- assay(obj.filter.ratio.multi[["ptm.ratio"]], "MS1.ratio.log1p.batchCorrect") %>% 
   as.data.frame() %>%
   rownames_to_column("ptm") %>%
   pivot_longer(
@@ -132,7 +132,7 @@ ggplot(df.pb, aes(x = bulk, y = pseudobulk)) +
 dev.off()
 
 # correlation by replicate
-df <- assay(obj, "MS1.log2.center.impute.batchCorrect") %>% 
+df <- assay(obj.filter.ratio.multi[["ptm.ratio"]], "MS1.ratio.log1p.batchCorrect") %>% 
   as.data.frame() %>%
     rownames_to_column("ptm") %>%
   pivot_longer(
@@ -200,7 +200,7 @@ dev.off()
 
 ### MS2
 ```{r}
-setwd("/Users/ronaldcutler/Dropbox\ (EinsteinMed)/Sidoli-lab/Projects/Single-cell-histone/Analysis/5-sc-vs-bulk")
+setwd("~/single-cell-histone-ptm/Analysis/5-sc-vs-bulk")
 
 # correlation all replicates
 df <- assay(obj, "MS2.log2.batchCorrect") %>% 
@@ -268,7 +268,7 @@ dev.off()
 
 #### Correlation
 ```{r}
-setwd("/Users/ronaldcutler/Dropbox\ (EinsteinMed)/Sidoli-lab/Projects/Single-cell-histone/Analysis/5-sc-vs-bulk")
+setwd("~/single-cell-histone-ptm/Analysis/5-sc-vs-bulk")
 
 # correlation all replicates
 # pseudobulk here is the mean instead of the sum of single cells
@@ -410,7 +410,7 @@ dev.off()
 
 ##### Bulk
 ```{r}
-setwd("/Users/ronaldcutler/Dropbox\ (EinsteinMed)/Sidoli-lab/Projects/Single-cell-histone/Analysis/5-sc-vs-bulk")
+setwd("~/single-cell-histone-ptm/Analysis/5-sc-vs-bulk")
 
 bulk <- assay(obj.filter.ratio.multi[["sptm.ratio"]], "MS1.ratio.log1p.batchCorrect") %>% 
   as.data.frame() %>%
@@ -441,7 +441,6 @@ bulk_cumulative <- bulk %>%
   mutate(ymin = cumulative_mean - SD,
          ymax = cumulative_mean + SD)
 
-
 pdf("MS1.ratio_H3_sptm_100cell.pdf",
     width = 5,
     height = 5)
@@ -454,11 +453,31 @@ ggplot(bulk_cumulative, aes(x = aa_pos, y = Mean, fill = mod)) +
   theme(legend.position = "top",
         legend.text = element_text(size = 12))
 dev.off()
+
+# Negate y-values for downward bars
+bulk_cumulative$Mean.flip <- -bulk_cumulative$Mean
+bulk_cumulative$ymin.flip <- -bulk_cumulative$ymin
+bulk_cumulative$ymax.flip <- -bulk_cumulative$ymax
+
+pdf("MS1.ratio_H3_sptm_100cell_flipped.pdf",
+    width = 5,
+    height = 5)
+ggplot(bulk_cumulative, aes(x = aa_pos, y = Mean.flip, fill = mod)) +
+  geom_bar(stat = "identity", position = "stack") +
+  geom_errorbar(aes(ymin = ymin.flip, ymax = ymax.flip), position = "identity", width = 0.2) +
+  labs(x = "Amino Acid Position", y = "Relative Abundance", fill = "Modification") +
+  theme_Publication() +
+  scale_fill_Publication() +
+  scale_x_discrete(position = "top") + # Move axis to the top
+  scale_y_continuous(labels = abs) +
+  theme(legend.position = "top",
+        legend.text = element_text(size = 12))
+dev.off()
 ```
 
 ##### Single cell
 ```{r}
-setwd("/Users/ronaldcutler/Dropbox\ (EinsteinMed)/Sidoli-lab/Projects/Single-cell-histone/Analysis/5-sc-vs-bulk")
+setwd("~/single-cell-histone-ptm/Analysis/5-sc-vs-bulk")
 
 sc <- assay(obj.filter.ratio.multi[["sptm.ratio"]], "MS1.ratio.log1p.batchCorrect") %>% 
   as.data.frame() %>%
@@ -496,7 +515,7 @@ pdf("MS1.ratio_H3_sptm_1cell.pdf",
 ggplot(sc_cumulative, aes(x = aa_pos, y = Mean, fill = mod)) +
   geom_bar(stat = "identity", position = "stack") +
   geom_errorbar(aes(ymin = ymin, ymax = ymax), position = "identity", width = 0.2) +
-  labs(x = "Amino Acid Position", y = "Relative Abundance", fill = "Modification") +
+  labs(x = "H3 Amino Acid Position", y = "Relative Abundance", fill = "Modification") +
   theme_Publication() +
   scale_fill_Publication() +
   theme(legend.position = "top",
@@ -508,7 +527,7 @@ dev.off()
 
 #### 230816_nabut_bulk_test
 ```{r}
-setwd("/Users/ronaldcutler/Dropbox\ (EinsteinMed)/Sidoli-lab/Projects/Single-cell-histone/Analysis/5-sc-vs-bulk")
+setwd("~/single-cell-histone-ptm/Analysis/5-sc-vs-bulk")
 
 df <- nabut_bulk_230816 %>% 
   select(contains("0_mmol")) %>%
@@ -556,7 +575,7 @@ dev.off()
 
 #### 231012_broad
 ```{r}
-setwd("/Users/ronaldcutler/Dropbox\ (EinsteinMed)/Sidoli-lab/Projects/Single-cell-histone/Analysis/5-sc-vs-bulk")
+setwd("~/single-cell-histone-ptm/Analysis/5-sc-vs-bulk")
 
 df <- nabut_bulk_231012 %>% 
   select(contains("auto")) %>%
@@ -603,11 +622,11 @@ ggplot(df_cumulative, aes(x = aa_pos, y = Mean, fill = mod)) +
 dev.off()
 ```
 
-##### Bulk from other studies
+#### Bulk from other studies
 
-###### Bottom-up vs middle-down (Anal Chem 2015)
+##### Bottom-up vs middle-down (Anal Chem 2015)
 ```{r}
-setwd("/Users/ronaldcutler/Dropbox\ (EinsteinMed)/Sidoli-lab/Projects/Single-cell-histone/Analysis/5-sc-vs-bulk")
+setwd("~/single-cell-histone-ptm/Analysis/5-sc-vs-bulk")
 
 df <- bottomup.sptm %>% 
   rownames_to_column("ptm") %>%
@@ -652,9 +671,9 @@ ggplot(df_cumulative, aes(x = aa_pos, y = Mean, fill = mod)) +
 dev.off()
 ```
 
-###### DIA low resolution (Anal Chem 2015)
+##### DIA low resolution (Anal Chem 2015)
 ```{r}
-setwd("/Users/ronaldcutler/Dropbox\ (EinsteinMed)/Sidoli-lab/Projects/Single-cell-histone/Analysis/5-sc-vs-bulk")
+setwd("~/single-cell-histone-ptm/Analysis/5-sc-vs-bulk")
 
 df <- dialowres.sptm %>% 
   rownames_to_column("ptm") %>%

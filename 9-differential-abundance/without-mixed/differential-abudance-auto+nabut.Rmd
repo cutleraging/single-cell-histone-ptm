@@ -1,0 +1,652 @@
+---
+title: "9-differential-abundance: nabut"
+output: html_document
+editor_options: 
+  chunk_output_type: console
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Preparation
+
+## Libraries
+```{r}
+library(MultiAssayExperiment)
+library(SummarizedExperiment)
+library(tidyr)
+library(dplyr)
+library(tibble)
+library(ggplot2)
+library(pheatmap)
+library(ComplexHeatmap)
+library(ggpubr)
+library(reshape2)
+library(PCAtools)
+library(umap)
+library(class)
+library(cluster)
+library(viridis)
+library(boot)
+library(EnhancedVolcano)
+library(RColorBrewer)
+```
+
+## Functions
+```{r}
+source("~/single-cell-histone-ptm/functions.R")
+```
+
+## Load normalized data
+- This now has the mixed cells classified into the control or treatment groups
+```{r}
+setwd("~/single-cell-histone-ptm/8-cell-classification/auto+nabut")
+
+obj.filter.ratio.multi <- readRDS("obj.filter.ratio.multi.RDS")
+
+# add unique replicate ids
+obj.filter.ratio.multi$replicate.unique <- factor(as.numeric(factor(obj.filter.ratio.multi$experiment_replicate)))
+obj.filter.ratio.multi[["ptm.ratio"]]$replicate.unique <- factor(as.numeric(factor(obj.filter.ratio.multi$experiment_replicate)))
+```
+
+## Remove mixed samples
+```{r}
+obj.filter.ratio.multi <- obj.filter.ratio.multi[,obj.filter.ratio.multi$condition != "mix"]
+```
+
+# Differential abundance
+
+## Control auto vs control nabut
+```{r}
+dir.create("~/single-cell-histone-ptm/9-differential-abundance/auto+nabut/without-mixed")
+setwd("~/single-cell-histone-ptm/9-differential-abundance/auto+nabut/without-mixed")
+
+obj.filter.ratio.multi[["ptm.ratio"]]$experiment_condition <- paste(obj.filter.ratio.multi$experiment,
+                                                                    obj.filter.ratio.multi$condition,
+                                                                    sep = "_")
+
+res.sc <- differential_abundance(obj.filter.ratio.multi[["ptm.ratio"]][,obj.filter.ratio.multi$multiplier == 1], 
+                                 assay = "MS1.ratio.log1p.batchCorrect",
+                                 test_type = "wilcox.test",
+                                 group_column = "experiment_condition", 
+                                 group1 = "auto_control",
+                                 group2 = "nabut_control")
+res.sc$PTM.Name.Readable <- rowData(obj.filter.ratio.multi[["ptm.ratio"]])$PTM.Name.Readable[match(rownames(res.sc), rownames(rowData(obj.filter.ratio.multi[["ptm.ratio"]])))]
+
+write.csv(res.sc, "auto_control_vs_nabut_control_sc.csv")
+ 
+# volcano
+
+# remove unmodified
+res.sc.mods <- res.sc[grep("ac|me", rownames(res.sc)), ]
+
+pdf("auto_control_vs_nabut_control_volcano_sc.csv",
+    height = 5,
+    width = 5)
+EnhancedVolcano(res.sc.mods,
+                lab = res.sc.mods$PTM.Name.Readable,
+                title = NULL,
+                subtitle = NULL,
+                caption = NULL,
+                x = 'log2FC',
+                y = 'p.value',
+                pCutoffCol = "p.adj",
+                pointSize = 4.0,
+                colAlpha = 0.75,
+                legendPosition = "none",
+                FCcutoff = 0,
+                pCutoff = 0.05,
+                labSize = 3,
+                labCol = 'black',
+                labFace = 'bold',
+                col = c("grey30", "grey30", "grey30", "red2"),
+                boxedLabels = FALSE,
+                drawConnectors = TRUE,
+                widthConnectors = 1.0,
+                colConnectors = 'black',
+                arrowheads = FALSE,
+                max.overlaps = Inf,
+                gridlines.major	= FALSE,
+                gridlines.minor = FALSE)
+                # ylim = c(0, 15),
+                # xlim = c(-1, 3))
+dev.off()
+
+# heatmap sig hits
+ptm.ratio.sig <- assay(obj.filter.ratio.multi[["ptm.ratio"]][,obj.filter.ratio.multi$multiplier == 1], "MS1.ratio.log1p.batchCorrect")[rownames(res.sc[res.sc$p.adj < 0.05,]),]
+rownames(ptm.ratio.sig) <- rowData(obj.filter.ratio.multi[["ptm.ratio"]])$PTM.Name.Readable[match(rownames(ptm.ratio.sig),
+                                                                                                  rownames(rowData(obj.filter.ratio.multi[["ptm.ratio"]])))]
+
+# remove unmodified
+ptm.ratio.sig <- ptm.ratio.sig[grep("ac|me", rownames(ptm.ratio.sig)), ]
+
+column_ha = HeatmapAnnotation("Replicate" = obj.filter.ratio.multi[,obj.filter.ratio.multi$multiplier == 1]$replicate.unique,
+                              "Condition" = obj.filter.ratio.multi[,obj.filter.ratio.multi$multiplier == 1]$condition.predict,
+                              col = list("Condition" = c("control" = "#317ec2",
+                                                       "treat" = "#c03830"),
+                                           "Replicate" = c("1" = brewer.pal(5, "Set1")[1],
+                                                        "2" = brewer.pal(5, "Set1")[2],
+                                                        "3" = brewer.pal(5, "Set1")[3],
+                                                        "4" = brewer.pal(5, "Set1")[4],
+                                                        "5" = brewer.pal(5, "Set1")[5]
+                                                      )
+                                        ),
+                              annotation_legend_param = list("Condition" = list(direction = "horizontal"),
+                                                             "Replicate" = list(direction = "horizontal"))
+                              )
+
+histone_proteins <- sub("(.*?)K.*", "\\1", rownames(ptm.ratio.sig))
+
+
+hm <- Heatmap(t(scale(t(ptm.ratio.sig))),
+        top_annotation = column_ha,
+        column_title = NULL,
+        heatmap_legend_param = list(
+                  title = "Z-score",
+                  direction = "vertical"),
+        cluster_rows = TRUE,
+        cluster_columns = TRUE,
+        show_column_names = FALSE,
+        column_split = obj.filter.ratio.multi[["ptm.ratio"]][,obj.filter.ratio.multi$multiplier == 1]$condition.predict,
+        split = histone_proteins,
+        cluster_column_slices = FALSE,
+        cluster_row_slices = FALSE,
+        row_names_gp = gpar(fontsize = 10))
+
+pdf("auto_control_vs_nabut_control_volcano_sig-heatmap.pdf",
+    width = 5,
+    height = 7.5)
+draw(hm,
+     heatmap_legend_side = "top",
+     annotation_legend_side = "top")
+dev.off() 
+
+# legend
+# lgd <- Legend(col_fun = col_fun, title = "legend2", at = c(0, 0.25, 0.5, 0.75, 1),
+#     direction = "horizontal")
+# 
+# pdf("nabut_vs_control_sig-heatmap.pdf",
+#     width = 7,
+#     height = 7)
+# draw(lgd)
+# dev.off() 
+```
+
+## Treated vs Control
+
+### All PTMs
+
+- Improvement: Calculate confidence interval for log2fc
+```{r}
+dir.create("~/single-cell-histone-ptm/9-differential-abundance/auto+nabut/without-mixed")
+setwd("~/single-cell-histone-ptm/9-differential-abundance/auto+nabut/without-mixed")
+
+# add predicted cell labels
+obj.filter.ratio.multi[["ptm.ratio"]]$condition.predict <- obj.filter.ratio.multi$condition.predict
+
+res.sc <- differential_abundance(obj.filter.ratio.multi[["ptm.ratio"]][,obj.filter.ratio.multi$multiplier == 1], 
+                                 assay = "MS1.ratio.log1p.batchCorrect",
+                                 test_type = "wilcox.test",
+                                 group_column = "condition.predict", 
+                                 group1 = "control",
+                                 group2 = "treat")
+res.sc$PTM.Name.Readable <- rowData(obj.filter.ratio.multi[["ptm.ratio"]])$PTM.Name.Readable[match(rownames(res.sc), rownames(rowData(obj.filter.ratio.multi[["ptm.ratio"]])))]
+
+write.csv(res.sc, "nabut_vs_control_sc.csv")
+ 
+# volcano
+
+# remove unmodified
+res.sc.mods <- res.sc[grep("ac|me", rownames(res.sc)), ]
+
+pdf("nabut_vs_control_volcano_sc.pdf",
+    height = 5,
+    width = 5)
+EnhancedVolcano(res.sc.mods,
+                lab = res.sc.mods$PTM.Name.Readable,
+                title = NULL,
+                subtitle = NULL,
+                caption = NULL,
+                x = 'log2FC',
+                y = 'p.value',
+                pCutoffCol = "p.adj",
+                pointSize = 4.0,
+                colAlpha = 0.75,
+                legendPosition = "none",
+                FCcutoff = 0,
+                pCutoff = 0.05,
+                labSize = 3,
+                labCol = 'black',
+                labFace = 'bold',
+                col = c("grey30", "grey30", "grey30", "red2"),
+                boxedLabels = FALSE,
+                drawConnectors = TRUE,
+                widthConnectors = 1.0,
+                colConnectors = 'black',
+                arrowheads = FALSE,
+                max.overlaps = Inf,
+                gridlines.major	= FALSE,
+                gridlines.minor = FALSE,
+                ylim = c(0, 10),
+                xlim = c(-2, 3))
+dev.off()
+
+# heatmap sig hits
+ptm.ratio.sig <- assay(obj.filter.ratio.multi[["ptm.ratio"]][,obj.filter.ratio.multi$multiplier == 1], "MS1.ratio.log1p.batchCorrect")[rownames(res.sc[res.sc$p.adj < 0.05,]),]
+rownames(ptm.ratio.sig) <- rowData(obj.filter.ratio.multi[["ptm.ratio"]])$PTM.Name.Readable[match(rownames(ptm.ratio.sig),
+                                                                                                  rownames(rowData(obj.filter.ratio.multi[["ptm.ratio"]])))]
+
+# remove unmodified
+ptm.ratio.sig <- ptm.ratio.sig[grep("ac|me", rownames(ptm.ratio.sig)), ]
+
+column_ha = HeatmapAnnotation("Replicate" = obj.filter.ratio.multi[,obj.filter.ratio.multi$multiplier == 1]$replicate.unique,
+                              "Condition" = obj.filter.ratio.multi[,obj.filter.ratio.multi$multiplier == 1]$condition.predict,
+                              col = list("Condition" = c("control" = "#317ec2",
+                                                       "treat" = "#c03830"),
+                                           "Replicate" = c("1" = brewer.pal(5, "Set1")[1],
+                                                        "2" = brewer.pal(5, "Set1")[2],
+                                                        "3" = brewer.pal(5, "Set1")[3],
+                                                        "4" = brewer.pal(5, "Set1")[4],
+                                                        "5" = brewer.pal(5, "Set1")[5]
+                                                      )
+                                        ),
+                              annotation_legend_param = list("Condition" = list(direction = "horizontal"),
+                                                             "Replicate" = list(direction = "horizontal"))
+                              )
+
+histone_proteins <- sub("(.*?)K.*", "\\1", rownames(ptm.ratio.sig))
+
+
+hm <- Heatmap(t(scale(t(ptm.ratio.sig))),
+        top_annotation = column_ha,
+        column_title = NULL,
+        heatmap_legend_param = list(
+                  title = "Z-score",
+                  direction = "vertical"),
+        cluster_rows = TRUE,
+        cluster_columns = TRUE,
+        show_column_names = FALSE,
+        column_split = obj.filter.ratio.multi[["ptm.ratio"]][,obj.filter.ratio.multi$multiplier == 1]$condition.predict,
+        split = histone_proteins,
+        cluster_column_slices = FALSE,
+        cluster_row_slices = FALSE,
+        row_names_gp = gpar(fontsize = 10))
+
+pdf("nabut_vs_control_sig-heatmap.pdf",
+    width = 5,
+    height = 7.5)
+draw(hm,
+     heatmap_legend_side = "top",
+     annotation_legend_side = "top")
+dev.off() 
+
+# legend
+# lgd <- Legend(col_fun = col_fun, title = "legend2", at = c(0, 0.25, 0.5, 0.75, 1),
+#     direction = "horizontal")
+# 
+# pdf("nabut_vs_control_sig-heatmap.pdf",
+#     width = 7,
+#     height = 7)
+# draw(lgd)
+# dev.off() 
+```
+
+#### Correlation with mixed comparison
+```{r}
+res.mixed <- read.csv("~/EinsteinMed Dropbox/Ronald Cutler/Sidoli-lab/Projects/Single-cell-histone/Analysis/9-differential-abundance/auto+nabut/with-mixed/nabut_vs_control_sc.csv",
+                      row.names = 1)
+
+res.merge <- merge(res.sc, 
+                   res.mixed, 
+                   by = "row.names")
+
+setwd("~/single-cell-histone-ptm/9-differential-abundance/auto+nabut/without-mixed")
+
+pdf("mixed_vs_nonmixed.pdf",
+    width = 5,
+    height = 5)
+ggplot(res.merge, aes(x = log2FC.x, y = log2FC.y)) +
+  geom_point() +
+  stat_smooth(method = "lm") +
+  stat_cor() +
+  theme_Publication() +
+  labs(x = "With mixed cells\nLog2 fold change",
+       y = "Without mixed cells\nLog2 fold change")
+dev.off()
+```
+
+
+#### Subclustering
+```{r}
+setwd("~/single-cell-histone-ptm/9-differential-abundance/auto+nabut/without-mixed")
+
+# Scale the data
+ptm.ratio.sig.treat <- assay(obj.filter.ratio.multi[["ptm.ratio"]][,obj.filter.ratio.multi$multiplier == 1 & obj.filter.ratio.multi$condition.predict == "treat"], "MS1.ratio.log1p.batchCorrect")[rownames(res.sc[res.sc$p.adj < 0.05,]),]
+
+# Scale the data
+scaled_data <- t(scale(t(ptm.ratio.sig.treat)))
+
+# Hierarchical clustering on rows
+row_dist <- dist(scaled_data) # Compute distance matrix for rows
+row_hclust <- hclust(row_dist) # Perform hierarchical clustering
+
+# Hierarchical clustering on columns
+col_dist <- dist(t(scaled_data)) # Compute distance matrix for columns
+col_hclust <- hclust(col_dist) # Perform hierarchical clustering
+
+# Get column cluster assignments
+col_clusters <- cutree(col_hclust, k = 2)
+
+# rename and factorize
+# remove outlier cell that is col_clusters == 3
+col_clusters[col_clusters == 2] <- "A"
+col_clusters[col_clusters == 1] <- "B"
+col_clusters_factor <- factor(col_clusters)
+
+# add to multi assay obj
+df <- colData(obj.filter.ratio.multi) %>%
+  as.data.frame() %>%
+  rownames_to_column("row_names") %>% # Convert rownames to a column for matching
+  mutate(
+    treat.subcluster = case_when(row_names %in%  names(col_clusters)[col_clusters == "A"] ~ "A", 
+                          row_names %in% names(col_clusters)[col_clusters == "B"] ~ "B",
+                          TRUE ~ NA_character_))
+obj.filter.ratio.multi$treat.subcluster <- df$treat.subcluster
+obj.filter.ratio.multi[["ptm.ratio"]]$treat.subcluster <- df$treat.subcluster
+```
+
+##### Heatmap validation
+```{r}
+setwd("~/single-cell-histone-ptm/9-differential-abundance/auto+nabut/without-mixed")
+
+column_ha = HeatmapAnnotation(
+  Subcluster = obj.filter.ratio.multi[,obj.filter.ratio.multi$multiplier == 1 & obj.filter.ratio.multi$condition.predict == "treat"]$treat.subcluster,
+  Replicate = obj.filter.ratio.multi[,obj.filter.ratio.multi$multiplier == 1 & obj.filter.ratio.multi$condition.predict == "treat"]$replicate.unique,
+                              col = list(
+                                 Subcluster =  c("A" = brewer.pal(3, "Dark2")[1],
+                                                 "B" = brewer.pal(3, "Dark2")[2]),
+                                 Replicate = c("4" = brewer.pal(5, "Set1")[4],
+                                               "5" = brewer.pal(5, "Set1")[5]
+                                                      )
+                                        )
+                              )
+
+histone_proteins <- sub("^([^-]+)-.*$", "\\1", rownames(ptm.ratio.sig.treat))
+
+pdf("nabut_vs_control_sig-heatmap_treat_subcluster.pdf",
+    width = 6,
+    height = 8)
+Heatmap(scaled_data,
+       top_annotation = column_ha,
+       column_title = NULL,
+        heatmap_legend_param = list(title = "Z-score"),
+        cluster_rows = TRUE,
+        cluster_columns = TRUE,
+        show_column_names = FALSE,
+        column_split = col_clusters_factor,  # Use cluster assignments for splitting
+        split = histone_proteins,
+        cluster_column_slices = FALSE,
+        cluster_row_slices = FALSE,
+        row_names_gp = gpar(fontsize = 10))
+dev.off()
+```
+
+##### Marker identification
+- Use only significant PTMs when comparing control and treat
+
+###### Subcluster A
+```{r}
+setwd("~/single-cell-histone-ptm/9-differential-abundance/auto+nabut/without-mixed")
+
+# subset treat cells
+obj.filter.ratio.multi.treat <- obj.filter.ratio.multi[["ptm.ratio"]][,obj.filter.ratio.multi$multiplier == 1 & obj.filter.ratio.multi$condition.predict == "treat" & !is.na(obj.filter.ratio.multi$treat.subcluster)]
+
+res.sc.treat.a <- differential_abundance(obj.filter.ratio.multi.treat[rownames(res.sc[res.sc$p.adj < 0.05,]),], 
+                                 assay = "MS1.ratio.log1p.batchCorrect",
+                                 test_type = "wilcox.test",
+                                 group_column = "treat.subcluster", 
+                                 group1 = "B",
+                                 group2 = "A")
+
+res.sc.treat.a$PTM.Name.Readable <- rowData(obj.filter.ratio.multi.treat)$PTM.Name.Readable[match(rownames(res.sc.treat.a), rownames(obj.filter.ratio.multi.treat))]
+
+write.csv(res.sc.treat.a, "nabut_vs_control_sc_treat_subcluster_a.csv")
+
+# remove unmodified
+res.sc.treat.a.mods <-  res.sc.treat.a[grep("ac|me", rownames(res.sc.treat.a)), ]
+
+pdf("nabut_vs_control_volcano_treat_subcluster_a.pdf",
+    height = 6,
+    width = 6)
+EnhancedVolcano(res.sc.treat.a.mods,
+                lab = res.sc.treat.a.mods$PTM.Name.Readable,
+                title = NULL,
+                subtitle = NULL,
+                caption = NULL,
+                x = 'log2FC',
+                y = 'p.value',
+                pCutoffCol = "p.adj",
+                pointSize = 4.0,
+                colAlpha = 0.75,
+                legendPosition = "none",
+                FCcutoff = 0,
+                pCutoff = 0.1,
+                labSize = 3,
+                labCol = 'black',
+                labFace = 'bold',
+                boxedLabels = FALSE,
+                drawConnectors = TRUE,
+                widthConnectors = 1.0,
+                colConnectors = 'black',
+                arrowheads = FALSE,
+                max.overlaps = Inf,
+                gridlines.major	= FALSE,
+                gridlines.minor = FALSE,
+                xlim = c(-2.5, 2.5),
+                ylim = c(0, 5))
+dev.off()
+```
+
+###### Subcluster B
+- results should be the same as for A but reversed
+```{r}
+setwd("~/single-cell-histone-ptm/9-differential-abundance/auto+nabut/without-mixed")
+
+res.sc.treat.b <- differential_abundance(obj.filter.ratio.multi.treat[rownames(res.sc[res.sc$p.adj < 0.05,]),], 
+                                 assay = "MS1.ratio.log1p.batchCorrect",
+                                 test_type = "wilcox.test",
+                                 group_column = "treat.subcluster", 
+                                 group1 = "A",
+                                 group2 = "B")
+
+write.csv(res.sc.treat.b, "nabut_vs_control_sc_treat_subcluster_b.csv")
+ 
+# volcano
+# res$volcano.label <- ""
+# res$volcano.score <- abs(res$log2fc) * -log10(res$p.value)
+# res <- res[order(res$volcano.score, decreasing = TRUE),]
+# res$volcano.label[1:20] <- res$ptm[1:20]
+# res$direction <- ifelse(res$log2fc > 0, "up", "down")
+
+pdf("nabut_vs_control_volcano_treat_subcluster_b.pdf",
+    height = 6,
+    width = 6)
+EnhancedVolcano(res.sc.treat.b,
+                lab = rownames(res.sc.treat.b),
+                title = NULL,
+                subtitle = NULL,
+                caption = NULL,
+                x = 'log2FC',
+                y = 'p.value',
+                pCutoffCol = "p.adj",
+                pointSize = 4.0,
+                colAlpha = 0.75,
+                legendPosition = "none",
+                FCcutoff = 0.5,
+                pCutoff = 0.1,
+                labSize = 3,
+                labCol = 'black',
+                labFace = 'bold',
+                boxedLabels = FALSE,
+                drawConnectors = FALSE,
+                widthConnectors = 1.0,
+                colConnectors = 'black',
+                arrowheads = FALSE,
+                max.overlaps = Inf,
+                gridlines.major	= FALSE,
+                gridlines.minor = FALSE)
+dev.off()
+```
+
+##### Heatmap of Subcluster markers
+```{r}
+setwd("~/single-cell-histone-ptm/9-differential-abundance/auto+nabut/without-mixed")
+
+# heatmap sig hits
+subcluster.markers.sig <- assay(obj.filter.ratio.multi.treat, "MS1.ratio.log1p.batchCorrect")[unique(c(rownames(res.sc.treat.a[res.sc.treat.a$p.value < 0.1,]),
+                                                                                         rownames(res.sc.treat.b[res.sc.treat.b$p.value < 0.1,]))),]
+
+rownames(subcluster.markers.sig) <- rowData(obj.filter.ratio.multi.treat)$PTM.Name.Readable[match(rownames(subcluster.markers.sig),
+                                                                                                  rownames(rowData(obj.filter.ratio.multi.treat)))]
+
+# remove unmodified
+subcluster.markers.sig <- subcluster.markers.sig[grep("ac|me", rownames(subcluster.markers.sig)), ]
+
+column_ha = HeatmapAnnotation(
+                              Condition = obj.filter.ratio.multi.treat$condition.predict,
+                              Replicate = obj.filter.ratio.multi.treat$replicate.unique,
+                              Subcluster = obj.filter.ratio.multi.treat$treat.subcluster,
+                              col = list(Condition = c("treat" = "#c03830"),
+                                           Replicate = c("4" = brewer.pal(5, "Set1")[4],
+                                                        "5" = brewer.pal(5, "Set1")[5]),
+                                         Subcluster = c("A" = brewer.pal(3, "Dark2")[1],
+                                                        "B" = brewer.pal(3, "Dark2")[2])
+                                        )
+                              )
+
+histone_proteins <- sub("(.*?)K.*", "\\1", rownames(subcluster.markers.sig))
+
+pdf("nabut_vs_control_sig-heatmap_treat_subcluster_sig-markers.pdf",
+    width = 5,
+    height = 3.5)
+Heatmap(t(scale(t(subcluster.markers.sig))),
+        top_annotation = column_ha,
+        column_title = NULL,
+        heatmap_legend_param = list(title = "Z-score"),
+        cluster_rows = TRUE,
+        cluster_columns = TRUE,
+        show_column_names = FALSE,
+        column_split = obj.filter.ratio.multi.treat$treat.subcluster,  # Use cluster assignments for splitting
+        split = histone_proteins,
+        cluster_column_slices = FALSE,
+        cluster_row_slices = FALSE,
+        row_names_gp = gpar(fontsize = 10))
+dev.off() 
+```
+
+### Global PTMs
+```{r}
+setwd("~/single-cell-histone-ptm/9-differential-abundance/auto+nabut/without-mixed")
+
+df <- assay(obj.filter.ratio.multi[["global.ratio"]][,obj.filter.ratio.multi$multiplier == 1], "MS1.ratio.log1p.batchCorrect") %>% 
+  as.data.frame() %>%
+  rownames_to_column("ptm") %>%
+  pivot_longer(
+    cols = -ptm, # This keeps the 'id' column fixed
+    names_to = "sample",
+    values_to = "value") %>%
+  merge(as.data.frame(colData(obj.filter.ratio.multi)), by.x = "sample", by.y = "row.names")
+
+# facet labels
+names <- c("Acetylation", "Mono-Methylation", "Di-Methylation", "Tri-Methylation")
+codes <- c("ac", "me", "me2", "me3")
+facet_labels <- setNames(names, codes)
+
+
+pdf("nabut_vs_control_global-ptm_violin.pdf",
+    width = 5,
+    height = 5)
+ggplot(df, aes(x = condition.predict,  y = value, fill = condition.predict)) +
+  geom_violin() +
+  geom_boxplot(width = 0.2, fill = "white") +
+  theme_Publication() +
+  labs(y = "Global Relative Abundance") +
+  scale_fill_manual(name = "Condition", 
+                    labels = c("Control", "Treat"),
+                    values = c("#317ec2" ,"#c03830")) +
+  facet_wrap(. ~ ptm, scales = "free_y", nrow = 2, 
+             labeller = labeller(ptm = as_labeller(facet_labels))) +
+  theme(axis.title.x=element_blank(),
+        axis.text.x=element_blank(),
+        axis.ticks.x=element_blank()) +
+  stat_compare_means(aes(group = condition.predict), 
+                            method = "wilcox.test", # Choose the appropriate test
+                            label = "p.format",
+                            label.x.npc = "center",
+                            label.y.npc = "top",
+                            hide.ns = TRUE,
+                            vjust = 1.5,
+                            size = 5)
+dev.off()
+```
+
+### H4 Acetylation
+```{r}
+setwd("~/single-cell-histone-ptm/9-differential-abundance/auto+nabut/without-mixed")
+
+df <- assay(obj.filter.ratio.multi[["h4.ac.ratio"]][,obj.filter.ratio.multi$multiplier == 1], "MS1.ratio.log1p.batchCorrect") %>% 
+  as.data.frame() %>%
+  rownames_to_column("ptm") %>%
+  pivot_longer(
+    cols = -ptm, # This keeps the 'id' column fixed
+    names_to = "sample",
+    values_to = "value") %>%
+  merge(as.data.frame(colData(obj.filter.ratio.multi)), by.x = "sample", by.y = "row.names") %>%
+  mutate(ptm = factor(ptm, levels = c("0-ac", "Mono-ac", "Di-ac", "Tri-ac", "Tetra-ac")))
+
+# facet labels
+names <- c("Unmodified", "Mono-Acetylation", "Di-Acetylation", "Tri-Acetylation", "Tetra-Acetylation")
+codes <-c("0-ac", "Mono-ac", "Di-ac", "Tri-ac", "Tetra-ac")
+facet_labels <- setNames(names, codes)
+
+pdf("nabut_vs_control_h4.ac_violin.pdf",
+    width = 5,
+    height = 6)
+ggplot(df, aes(x = condition.predict,  y = value, fill = condition.predict)) +
+  geom_violin() +
+  geom_boxplot(width = 0.2, fill = "white") +
+  theme_Publication() +
+  labs(y = "H4 acetylation Relative Abundance") +
+  scale_fill_manual(name = "Condition", 
+                    labels = c("Control", "Treat"),
+                    values = c("#317ec2" ,"#c03830")) +
+  facet_wrap(. ~ ptm, scales = "free_y", nrow = 3, 
+             labeller = labeller(ptm = as_labeller(facet_labels))) +
+  theme(axis.title.x=element_blank(),
+        axis.text.x=element_blank(),
+        axis.ticks.x=element_blank(),
+        strip.text = element_text(size = 13)) +
+  #scale_y_continuous(labels = function(x) paste0(x*100, "%")) +
+  stat_compare_means(aes(group = condition.predict), 
+                            method = "wilcox.test", # Choose the appropriate test
+                            label = "p.format",
+                            label.x.npc = "center",
+                            label.y.npc = "top",
+                            hide.ns = TRUE,
+                            vjust = 1.5,
+                     size = 5)
+dev.off()
+```
+
+# Export data and save object
+```{r}
+setwd("~/single-cell-histone-ptm/9-differential-abundance/auto+nabut/without-mixed")
+
+# export new cluster assignments
+write.csv(colData(obj.filter.ratio.multi), "obj.filter.ratio.multi.meta.csv")
+
+# save
+saveRDS(obj.filter.ratio.multi, "obj.filter.ratio.multi.RDS")
+```
+

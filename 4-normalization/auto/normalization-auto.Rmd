@@ -27,6 +27,7 @@ library(ggplot2)
 library(pheatmap)
 library(ggpubr)
 library(reshape2)
+library(scales)
 library(viridis)
 library(ggrepel)
 library(RColorBrewer)
@@ -37,13 +38,13 @@ library(limma)
 
 ## Functions
 ```{r}
-source("/Users/ronaldcutler/Dropbox\ (EinsteinMed)/Sidoli-lab/Projects/Single-cell-histone/Analysis/functions.R")
+source("~/single-cell-histone-ptm/functions.R")
 ```
 
 ## Load data
 ```{r}
 # metadata
-setwd("/Users/ronaldcutler/Dropbox\ (EinsteinMed)/Sidoli-lab/Projects/Single-cell-histone/Analysis/1-data/single-cell")
+setwd("~/single-cell-histone-ptm/1-data/single-cell")
 
 coldata <- read.csv("sample-table.csv", 
                header = TRUE,
@@ -51,15 +52,15 @@ coldata <- read.csv("sample-table.csv",
 # coldata[] <- lapply(coldata, as.factor) # make all vars factors
 
 # skyline output
-setwd("/Users/ronaldcutler/Dropbox\ (EinsteinMed)/Sidoli-lab/Projects/Single-cell-histone/Analysis/1-data/single-cell/intensities")
+setwd("~/single-cell-histone-ptm/1-data/single-cell/intensities")
 
 # combine all plates
-df.1 <- read.csv("240321_Skyline_SC_export_auto1_cells.csv", 
+df.1 <- read.csv("241113_Skyline_SC_export_auto1_cells.csv", 
                header = TRUE,
                stringsAsFactors = TRUE,
                na.strings = "#N/A")
 
-df.2 <- read.csv("240321_Skyline_SC_export_auto2_auto4_cells.csv", 
+df.2 <- read.csv("241106_Skyline_SC_export_auto2_auto4_cells.csv", 
                header = TRUE,
                stringsAsFactors = TRUE,
                na.strings = "#N/A")
@@ -67,27 +68,64 @@ df.2 <- read.csv("240321_Skyline_SC_export_auto2_auto4_cells.csv",
 df.combine <- rbind(df.1, df.2)
 
 # filter peptides
-df.combine.filter <- filter_peptides(df.combine)
+df.combine.filter <- filter_peptides_skyline(df.combine)
 
 # deconvolute isobaric H4 peptides using fragments
 df.combine.filter.deconv <- deconvolute_h4(df.combine.filter)
 
 # combine into summarized experiment object
-obj <- load_skyline_summarized_experiment(df.combine.filter.deconv, coldata)
+obj <- load_summarized_experiment_skyline(df.combine.filter.deconv, coldata)
+```
 
-# add total MS1 and MS2 to coldata
-obj$total.ms1 <- colSums(assay(obj, "MS1"), na.rm = TRUE)
-obj$total.ms2 <- colSums(assay(obj, "MS2"), na.rm = TRUE)
+### Add derivitization efficiency data
+```{r}
+setwd("~/single-cell-histone-ptm/2-derivitization-efficiency/DIA")
 
+prop.eff <- read.csv("propionylation_efficiency_percent.csv",
+                     row.names = 1)
+
+# order the same as obj
+prop.eff <- prop.eff[match(obj$run_id, sub(".*_(\\d+)$", "\\1", rownames(prop.eff))),]
+rownames(prop.eff) <- colnames(obj)
+colData(obj) <- cbind(colData(obj), prop.eff)
+```
+
+### Modify colData
+```{r}
 # change replicate 4 to 3 to make it easier to read
 obj$replicate <- as.character(obj$replicate)
 obj$replicate[obj$replicate == 4] <- 3
 obj$replicate <- factor(obj$replicate)
 ```
 
+### Save object
+```{r}
+setwd("~/single-cell-histone-ptm/4-normalization/auto")
+
+saveRDS(obj, "obj.RDS")
+```
+
+### Output tables
+```{r}
+dir.create("~/single-cell-histone-ptm/4-normalization/auto/unfiltered")
+setwd("~/single-cell-histone-ptm/4-normalization/auto/unfiltered")
+
+write.csv(assay(obj, "MS1"), "MS1.csv")
+write.csv(assay(obj, "MS2"), "MS2.csv")
+write.csv(assay(obj, "RT"), "RT.csv")
+write.csv(assay(obj, "RT")/40, "RT.relative.csv")
+write.csv(rowData(obj)[,c("Protein.Accession",
+                          "Protein.Gene",
+                          "Peptide.Sequence",
+                          "Precursor.Charge",
+                          "PrecursorMz",
+                          "Peptide.Note.Clean")],
+          "peptidoform-annotation.csv")
+```
+
 ## Save object
 ```{r}
-setwd("/Users/ronaldcutler/Dropbox\ (EinsteinMed)/Sidoli-lab/Projects/Single-cell-histone/Analysis/4-normalization/auto")
+setwd("~/single-cell-histone-ptm/4-normalization/auto")
 
 saveRDS(obj, "obj.RDS")
 ```
@@ -96,8 +134,7 @@ saveRDS(obj, "obj.RDS")
 
 ## Types of histone PTMs detected
 ```{r}
-dir.create("/Users/ronaldcutler/Dropbox\ (EinsteinMed)/Sidoli-lab/Projects/Single-cell-histone/Analysis/4-normalization/auto/unfiltered")
-setwd("/Users/ronaldcutler/Dropbox\ (EinsteinMed)/Sidoli-lab/Projects/Single-cell-histone/Analysis/4-normalization/auto/unfiltered")
+setwd("~/single-cell-histone-ptm/4-normalization/auto/unfiltered")
 
 # Categorize each peptide
 categories <- map_chr(rownames(obj), categorize_peptide)
@@ -136,7 +173,7 @@ dev.off()
 
 ## Number of samples
 ```{r}
-setwd("/Users/ronaldcutler/Dropbox\ (EinsteinMed)/Sidoli-lab/Projects/Single-cell-histone/Analysis/4-normalization/auto/unfiltered")
+setwd("~/single-cell-histone-ptm/4-normalization/auto/unfiltered")
 
 # by plate
 df <- as.data.frame(table(obj$replicate))
@@ -168,7 +205,7 @@ dev.off()
 
 ## Peptides detected
 ```{r}
-setwd("/Users/ronaldcutler/Dropbox\ (EinsteinMed)/Sidoli-lab/Projects/Single-cell-histone/Analysis/4-normalization/auto/unfiltered")
+setwd("~/single-cell-histone-ptm/4-normalization/auto/unfiltered")
 
 # MS1 precursors
 data <- assay(obj, "MS1")
@@ -237,7 +274,7 @@ dev.off()
 
 ## Peptide retention times
 ```{r}
-setwd("/Users/ronaldcutler/Dropbox\ (EinsteinMed)/Sidoli-lab/Projects/Single-cell-histone/Analysis/4-normalization/auto/unfiltered")
+setwd("~/single-cell-histone-ptm/4-normalization/auto/unfiltered")
 
 df <- assay(obj, "RT") %>% 
   rownames_to_column("id") %>%
@@ -276,7 +313,7 @@ dev.off()
 
 ### MS1
 ```{r}
-setwd("/Users/ronaldcutler/Dropbox\ (EinsteinMed)/Sidoli-lab/Projects/Single-cell-histone/Analysis/4-normalization/auto/unfiltered")
+setwd("~/single-cell-histone-ptm/4-normalization/auto/unfiltered")
 
 # transform
 assays(obj)[["MS1.log2"]] <- log2(assay(obj, "MS1") + 1)
@@ -296,9 +333,22 @@ pdf("MS1.log2_distribution_unflitered_cell.pdf",
 ggplot(df, aes(x = as.factor(run_id), y = value, fill = as.factor(replicate))) +
   geom_boxplot(width = 0.7) +
   theme_Publication() +
-  labs(title = "Cell #", x = "Run", y = "Log2(MS1 intensity)", fill = "Replicate") +
-  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1, size = 10)) +
+  labs(x = "Injection", y = "Log2(MS1 intensity)", fill = "Batch") +
+  theme(axis.text.x = element_blank(),
+        axis.ticks.x = element_blank()) + 
   facet_wrap(.~as.factor(multiplier), scales = "free_x", nrow = 3)
+dev.off()
+
+pdf("MS1.log2_distribution_unflitered_1cell_100cell.pdf",
+    width = 5,
+    height = 5)
+ggplot(subset(df, multiplier == 1 | multiplier == 100), aes(x = as.factor(run_id), y = value, fill = as.factor(replicate))) +
+  geom_boxplot(width = 0.7) +
+  theme_Publication() +
+  labs(x = "Injection", y = "Log2(MS1 intensity)", fill = "Batch") +
+  theme(axis.text.x = element_blank(),
+        axis.ticks.x = element_blank()) + 
+  facet_wrap(.~as.factor(multiplier), scales = "free_x", nrow =2)
 dev.off()
 
 # plot by peptide
@@ -308,7 +358,7 @@ pdf("MS1.log2_distribution_unflitered_peptide.pdf",
 ggplot(df, aes(x = id, y = value)) +
   geom_boxplot() +
   theme_Publication() +
-  labs(title = "Cell #", x = "Peptide", y = "Log2(MS1 intensity)", fill = "Replicate") +
+  labs(title = "Cell #", x = "Peptide", y = "Log2(MS1 intensity)", fill = "Batch") +
   theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1, size = 10)) +
   facet_wrap(.~as.factor(multiplier), scales = "free_x")
 dev.off()
@@ -322,7 +372,6 @@ column_ha = HeatmapAnnotation(Replicate = as.factor(obj$replicate),
                                         )
                               )
 row_ha = rowAnnotation(charge = anno_barplot(rowData(obj)$Precursor.Charge))
-histone_proteins <- str_extract(rowData(obj)$Protein.Name, "(?<=\\|)[^|_]+(?=_HUMAN)")
 
 pdf("MS1.log2_unflitered_heatmap.pdf",
     width = 9,
@@ -332,34 +381,14 @@ Heatmap(assay(obj, "MS1.log2"),
         right_annotation = row_ha,
         column_title = NULL,
         heatmap_legend_param = list(title = "Log2(MS1 area)"),
-        cluster_rows = TRUE,
-        cluster_columns = TRUE,
-        show_column_names = FALSE,
-        split = histone_proteins,
+        cluster_rows = FALSE,
+        cluster_columns = FALSE,
+        show_column_names = TRUE,
         cluster_column_slices = FALSE,
         cluster_row_slices = FALSE,
         row_names_gp = gpar(fontsize = 10),
-        na_col = "yellow")
+        na_col = "black")
 dev.off() 
-
-column_ha = HeatmapAnnotation(
-                              cell_number = as.factor(obj$multiplier),
-                              run_id = obj$run_id)
-
-
-pdf("MS1.log2_unflitered_heatmap.pdf",
-    width = 10,
-    height = 10)
-set.seed(123)
-Heatmap(scale(assay(obj, "MS1.log2"), center = FALSE, scale = FALSE),
-        top_annotation = column_ha,
-        right_annotation = row_ha,
-        heatmap_legend_param = list(title = "Log2(MS1 area)"),
-        cluster_rows = TRUE,
-        cluster_columns = TRUE,
-        show_column_names = FALSE,
-        row_names_gp = gpar(fontsize = 10))
-dev.off()
 
 # PCA
 df <- colData(obj)
@@ -403,7 +432,7 @@ dev.off()
 
 ### MS2
 ```{r}
-setwd("/Users/ronaldcutler/Dropbox\ (EinsteinMed)/Sidoli-lab/Projects/Single-cell-histone/Analysis/4-normalization/auto/unfiltered")
+setwd("~/single-cell-histone-ptm/4-normalization/auto/unfiltered")
 
 # transform
 assays(obj)[["MS2.log2"]] <- log2(assay(obj, "MS2") + 1)
@@ -423,7 +452,7 @@ pdf("MS2.log2_distribution_unflitered_cell.pdf",
 ggplot(df, aes(x = as.factor(run_id), y = value, fill = as.factor(replicate))) +
   geom_boxplot(width = 0.7) +
   theme_Publication() +
-  labs(title = "Cell #", x = "Run", y = "Log2(MS2 intensity)", fill = "Replicate") +
+  labs(title = "Cell #", x = "Run", y = "Log2(MS2 intensity)", fill = "Batch") +
   theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1, size = 10)) +
   facet_wrap(.~as.factor(multiplier), scales = "free_x", nrow = 3)
 dev.off()
@@ -435,30 +464,30 @@ pdf("MS2.log2_distribution_unflitered_peptide.pdf",
 ggplot(df, aes(x = id, y = value)) +
   geom_boxplot() +
   theme_Publication() +
-  labs(title = "Cell #", x = "Peptide", y = "Log2(MS2 intensity)", fill = "Replicate") +
+  labs(title = "Cell #", x = "Peptide", y = "Log2(MS2 intensity)", fill = "Batch") +
   theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1, size = 10)) +
   facet_wrap(.~as.factor(multiplier), scales = "free_x")
 dev.off()
 
 # heatmap
-column_ha = HeatmapAnnotation(replicate = as.factor(obj$replicate),
-                              cell_number = as.factor(obj$multiplier),
-                              run_id = obj$run_id)
-row_ha = rowAnnotation(charge = anno_barplot(rowData(obj)$Precursor.Charge))
-
-pdf("MS2.log2_unflitered_heatmap.pdf",
-    width = 10,
-    height = 10)
-set.seed(123)
-Heatmap(scale(assay(obj, "MS2.log2"), center = FALSE, scale = FALSE),
-        top_annotation = column_ha,
-        right_annotation = row_ha,
-        heatmap_legend_param = list(title = "Log2(MS2 area)"),
-        cluster_rows = TRUE,
-        cluster_columns = TRUE,
-        show_column_names = FALSE,
-        row_names_gp = gpar(fontsize = 10))
-dev.off()
+# column_ha = HeatmapAnnotation(replicate = as.factor(obj$replicate),
+#                               cell_number = as.factor(obj$multiplier),
+#                               run_id = obj$run_id)
+# row_ha = rowAnnotation(charge = anno_barplot(rowData(obj)$Precursor.Charge))
+# 
+# pdf("MS2.log2_unflitered_heatmap.pdf",
+#     width = 10,
+#     height = 10)
+# set.seed(123)
+# Heatmap(scale(assay(obj, "MS2.log2"), center = FALSE, scale = FALSE),
+#         top_annotation = column_ha,
+#         right_annotation = row_ha,
+#         heatmap_legend_param = list(title = "Log2(MS2 area)"),
+#         cluster_rows = TRUE,
+#         cluster_columns = TRUE,
+#         show_column_names = FALSE,
+#         row_names_gp = gpar(fontsize = 10))
+# dev.off()
 
 # PCA
 df <- colData(obj)
@@ -502,7 +531,7 @@ dev.off()
 
 ### MS1 vs MS2
 ```{r}
-setwd("/Users/ronaldcutler/Dropbox\ (EinsteinMed)/Sidoli-lab/Projects/Single-cell-histone/Analysis/4-normalization/auto/unfiltered")
+setwd("~/single-cell-histone-ptm/4-normalization/auto/unfiltered")
 
 # by standards
 df.1 <- assay(obj, "MS1.log2") %>% 
@@ -562,7 +591,7 @@ dev.off()
 
 ### MS1
 ```{r}
-setwd("/Users/ronaldcutler/Dropbox\ (EinsteinMed)/Sidoli-lab/Projects/Single-cell-histone/Analysis/4-normalization/auto/unfiltered")
+setwd("~/single-cell-histone-ptm/4-normalization/auto/unfiltered")
 
 # plot single cells vs blanks
 df <- assay(obj, "MS1") %>% 
@@ -660,7 +689,7 @@ df %>%
 
 ### MS2
 ```{r}
-setwd("/Users/ronaldcutler/Dropbox\ (EinsteinMed)/Sidoli-lab/Projects/Single-cell-histone/Analysis/4-normalization/auto/unfiltered")
+setwd("~/single-cell-histone-ptm/4-normalization/auto/unfiltered")
 
 # plot single cells vs blanks
 df <- assay(obj, "MS2") %>% 
@@ -757,36 +786,193 @@ df %>%
   dev.off()
 ```
 
+## Derivitization efficiency
+```{r}
+setwd("~/single-cell-histone-ptm/4-normalization/auto/unfiltered")
+
+df <- colData(obj) %>% 
+  as.data.frame() %>%
+  rownames_to_column("run") %>%
+  pivot_longer(
+    cols = starts_with("prop"),
+    names_to = "variable",
+    values_to = "value") %>%
+  filter(multiplier == 1 | multiplier == 100)
+df$variable <- factor(df$variable,
+                      levels = c("prop.eff.underprop.summary",
+                                 "prop.eff.overprop",
+                                 "prop.eff.underprop.first.round",
+                                 "prop.eff.underprop.second.round",
+                                 "prop.eff.underprop.both.round"))
+
+# summary
+pdf("propionylation_efficiency.pdf",
+    width = 8,
+    height = 5)
+ggplot(df, aes(x = variable, y = value)) +
+  geom_boxplot(aes(fill = replicate), outlier.shape = NA, position = position_dodge(width = 0.75)) +
+  geom_jitter(aes(fill = replicate, shape = as.factor(multiplier)), 
+              position = position_jitterdodge(jitter.width = 0.2, dodge.width = 0.75, jitter.height = 0), 
+              alpha = 0.75, size = 1.5) +
+  scale_y_continuous(labels = label_percent(accuracy = 1)) +
+  scale_x_discrete(labels = c("Under\nPropionylation", 
+                              "Over\nPropionlyation", 
+                              "Under\nPropionylation\n1st Round", 
+                              "Under\nPropionylation\n2nd Round", 
+                              "Under\nPropionylation\n1st & 2nd Rounds")) +
+  labs(x = "", 
+       shape = "# Cells Per Injection",
+       y = "% Raw MS1 Area of Peptide\nNot Correctly Propionylated", 
+       fill = "Batch") +
+  theme_Publication() +
+  theme(legend.box = "vertical",
+        axis.text.x = element_text(angle = 45, vjust = 0.75, hjust=0.5))
+dev.off()
+
+pdf("propionylation_efficiency_summary.pdf",
+    width = 5,
+    height = 5)
+ggplot(subset(df, !grepl("round", variable)), aes(x = variable, y = value)) +
+  geom_boxplot(aes(fill = replicate), outlier.shape = NA, position = position_dodge(width = 0.75)) +
+  geom_jitter(aes(fill = replicate, shape = as.factor(multiplier)), 
+              position = position_jitterdodge(jitter.width = 0.2, dodge.width = 0.75, jitter.height = 0), 
+              alpha = 0.75, size = 1.5) +
+  scale_y_continuous(labels = label_percent(accuracy = 1)) +
+  scale_x_discrete(labels = c("Under\nPropionylation", "Over\nPropionlyation")) +
+  labs(x = "", 
+       shape = "# Cells Per Injection",
+       y = "% Raw MS1 Area of Peptide\nNot Correctly Propionylated", 
+       fill = "Batch") +
+  theme_Publication() +
+  theme(legend.box = "vertical")
+dev.off()
+```
+
+### Correlation to abundance
+- Propionlyation efficiency was estimated using H31-K9[un];K14[un]
+```{r}
+setwd("~/EinsteinMed Dropbox/Ronald Cutler/Sidoli-lab/Projects/Single-cell-histone/Analysis/4-normalization/auto/unfiltered")
+
+# correlation of abundance and prop eff
+df <- assay(obj, "MS1") %>% 
+  rownames_to_column("id") %>%
+  pivot_longer(
+    cols = -id, # This keeps the 'id' column fixed
+    names_to = "variable",
+    values_to = "value") %>%
+  merge(as.data.frame(colData(obj)), by.x = "variable", by.y = "row.names") %>%
+  filter(id == "H31-K9[un];K14[un]")
+
+pdf("MS1.log1p_H31-K9[un];K14[un]_vs_prop.eff.underprop.summary.pdf",
+    width = 5,
+    height = 5)
+ggplot(df, aes(x = log1p(value), y = prop.eff.underprop.summary)) +
+  geom_point(aes(color = replicate), size = 1.5, alpha = 0.75) +
+  stat_smooth(method = "lm") +
+  stat_cor() +
+  labs(x = "H31-K9[un];K14[un]\n  Raw Log1p Intensity",
+       y = "% Raw MS1 Area of Peptide\nUnder Propionylated",
+       color = "Batch") +
+  scale_y_continuous(labels = label_percent(accuracy = 1)) +
+  theme_Publication() +
+  theme(legend.position = "right",       # Position legend on the right
+        legend.direction = "vertical")   # Arrange legend items vertically
+dev.off()
+
+pdf("MS1.log1p_H31-K9[un];K14[un]_vs_prop.eff.overprop.pdf",
+    width = 5,
+    height = 5)
+ggplot(df, aes(x = log1p(value), y = prop.eff.overprop)) +
+  geom_point(aes(color = replicate), size = 1.5, alpha = 0.75) +
+  stat_smooth(method = "lm") +
+  stat_cor() +
+  labs(x = "H31-K9[un];K14[un]\n  Raw Log1p Intensity",
+       y = "% Raw MS1 Area of Peptide\nOver Propionylated",
+       color = "Batch") +
+  scale_y_continuous(labels = label_percent(accuracy = 1)) +
+  theme_Publication() +
+  theme(legend.position = "right",       # Position legend on the right
+        legend.direction = "vertical")   # Arrange legend items vertically
+dev.off()
+```
+
 # Filtering
 
-## Missing peptides
+## Cell level
+
+### Low overall signal intensity
+- Mean intensity of cell is x MAD away from that of all cells
+- MAD threshold is set so that empty cells are filtered out - so any cells that are similar to these
+```{r}
+dir.create("~/EinsteinMed Dropbox/Ronald Cutler/Sidoli-lab/Projects/Single-cell-histone/Analysis/4-normalization/auto/filtered")
+setwd("~/EinsteinMed Dropbox/Ronald Cutler/Sidoli-lab/Projects/Single-cell-histone/Analysis/4-normalization/auto/filtered")
+
+# filter out 2, 4, 8 cells
+obj.cell_filter_1 <- obj[,obj$multiplier == 0 |
+                         obj$multiplier == 1 |
+                         obj$multiplier == 100]
+
+# empty should be filtered
+obj.cell_filter_2 <- filter_overall_intensity(obj.cell_filter_1, assay = "MS1", dev = 0.8, filter_low = TRUE, filter_high = FALSE)
+
+# change coldata
+obj.cell_filter_2$multiplier <- factor(obj.cell_filter_2$multiplier)
+
+saveRDS(obj.cell_filter_2, "obj.cell_filter.RDS")
+```
+
+### Low propionylation efficiency
+- Propiopnlyation efficiency of cell is 1 MAD away from that of all cells
+```{r}
+dir.create("~/EinsteinMed Dropbox/Ronald Cutler/Sidoli-lab/Projects/Single-cell-histone/Analysis/4-normalization/auto/filtered")
+setwd("~/EinsteinMed Dropbox/Ronald Cutler/Sidoli-lab/Projects/Single-cell-histone/Analysis/4-normalization/auto/filtered")
+
+obj.underprop_eff_filter <- filter_prop_eff(obj.cell_filter_2, 
+                                            prop.eff = obj.cell_filter_2$prop.eff.underprop.summary, 
+                                            dev = 2, 
+                                            filter_low = FALSE, 
+                                            filter_high = TRUE)
+
+obj.overprop_eff_filter <- filter_prop_eff(obj.underprop_eff_filter, 
+                                          prop.eff = obj.underprop_eff_filter$prop.eff.overprop, 
+                                          dev = 2, 
+                                          filter_low = TRUE, 
+                                          filter_high = TRUE)
+
+saveRDS(obj.underprop_eff_filter, "obj.prop_eff_filter.RDS")
+```
+
+## Peptidoform level
+
+### Inconsistent detection
 - Filter out peptides not detected in > 50% of single-cells
 ```{r}
-dir.create("/Users/ronaldcutler/Dropbox\ (EinsteinMed)/Sidoli-lab/Projects/Single-cell-histone/Analysis/4-normalization/auto/filtered")
-setwd("/Users/ronaldcutler/Dropbox\ (EinsteinMed)/Sidoli-lab/Projects/Single-cell-histone/Analysis/4-normalization/auto/filtered")
+setwd("~/EinsteinMed Dropbox/Ronald Cutler/Sidoli-lab/Projects/Single-cell-histone/Analysis/4-normalization/auto/filtered")
 
-obj.peptide_filter <- filter_missing_peptides(obj, threshold = 0.5)
+obj.peptide_filter <- filter_missing_peptides(obj.underprop_eff_filter, threshold = 0.5)
 
 saveRDS(obj.peptide_filter, "obj.peptide_filter.RDS")
 ```
 
-
-## Background noise removal
-- Filter out peptides whose single cell signal is less than 1.5 times greater than the background signal
+### Low signal
+- Filter out peptides whose single cell signal is less than 50% greater than the background signal
 ```{r}
-setwd("/Users/ronaldcutler/Dropbox\ (EinsteinMed)/Sidoli-lab/Projects/Single-cell-histone/Analysis/4-normalization/auto/filtered")
+setwd("~/EinsteinMed Dropbox/Ronald Cutler/Sidoli-lab/Projects/Single-cell-histone/Analysis/4-normalization/auto/filtered")
 
-obj.background_filter <- filter_background_peptides(obj.peptide_filter, ratio = 1)
+# add back empty samples temporarily
+obj.peptide_filter_empty <- cbind(obj.peptide_filter, 
+                                  obj.cell_filter_1[rownames(obj.peptide_filter), obj.cell_filter_1$multiplier == 0])
+
+obj.background_filter <- filter_background_peptides(obj.peptide_filter_empty, ratio = 1.5)
 
 saveRDS(obj.background_filter, "obj.background_filter.RDS")
 ```
 
-### Background noise plots
-- Plot now because empty cells will be removed in next filter
+#### Plots
 
-#### MS1
+##### MS1
 ```{r}
-setwd("/Users/ronaldcutler/Dropbox\ (EinsteinMed)/Sidoli-lab/Projects/Single-cell-histone/Analysis/4-normalization/auto/filtered")
+setwd("~/EinsteinMed Dropbox/Ronald Cutler/Sidoli-lab/Projects/Single-cell-histone/Analysis/4-normalization/auto/filtered")
 
 # plot single cells vs blanks
 df <- assay(obj.background_filter, "MS1") %>% 
@@ -798,6 +984,7 @@ df <- assay(obj.background_filter, "MS1") %>%
   merge(as.data.frame(colData(obj.background_filter)), by.x = "variable", by.y = "row.names") %>%
   subset(multiplier %in% c(0, 1))
 df$id <- gsub(";", " ", df$id)
+df$multiplier <- factor(df$multiplier, levels = c(0, 1))
 
 # peptides separate
   # replicates merged
@@ -811,7 +998,13 @@ df$id <- gsub(";", " ", df$id)
     theme_Publication(base_size = 12) +
     labs(title = "", x = "Cell #", y = "MS1 Intensity") +
     facet_wrap(~id, scales = "free_y", labeller = labeller(id = label_wrap_gen(20))) +
-    theme(legend.position = "none")
+        theme(legend.position = "none",
+          axis.title.x = element_text(size = 32),
+          axis.title.y = element_text(size = 32),
+          axis.text = element_text(size = 16),
+          legend.title = element_text(size = 32),
+          legend.text = element_text(size = 32),
+          strip.text = element_text(size = 11))
   dev.off()
   
   # replicates separated
@@ -824,7 +1017,14 @@ df$id <- gsub(";", " ", df$id)
     scale_y_continuous(labels = function(x) format(x, scientific = TRUE)) +
     theme_Publication(base_size = 12) +
     labs(title = "", x = "Cell #", y = "MS1 Intensity", color = "Replicate") +
-    facet_wrap(~id, scales = "free_y", labeller = labeller(id = label_wrap_gen(20)))
+    facet_wrap(~id, scales = "free_y", labeller = labeller(id = label_wrap_gen(20))) +
+    theme(legend.position = "none",
+          axis.title.x = element_text(size = 32),
+          axis.title.y = element_text(size = 32),
+          axis.text = element_text(size = 16),
+          legend.title = element_text(size = 32),
+          legend.text = element_text(size = 32),
+          strip.text = element_text(size = 10))
   dev.off()
   
   # subset representative peptides
@@ -877,9 +1077,9 @@ df$id <- gsub(";", " ", df$id)
   dev.off()
 ```
 
-#### MS2
+##### MS2
 ```{r}
-setwd("/Users/ronaldcutler/Dropbox\ (EinsteinMed)/Sidoli-lab/Projects/Single-cell-histone/Analysis/4-normalization/auto/filtered")
+setwd("~/EinsteinMed Dropbox/Ronald Cutler/Sidoli-lab/Projects/Single-cell-histone/Analysis/4-normalization/auto/filtered")
 
 # plot single cells vs blanks
 df <- assay(obj.background_filter, "MS2") %>% 
@@ -971,70 +1171,66 @@ df$id <- gsub(";", " ", df$id)
   dev.off()
 ```
 
-## Non-linear peptides based on calibration curves with differing amounts of cells
-- Go back and plot these curves again now that it is filtered
+### Poor quantification
+- Peptidoforms which do not have the expected correlation based on titration curves
+- The derivatization analysis should be done here ideally
 ```{r}
-setwd("/Users/ronaldcutler/Dropbox\ (EinsteinMed)/Sidoli-lab/Projects/Single-cell-histone/Analysis/3-calibration-curves/auto/cells/unfiltered")
+setwd("~/EinsteinMed Dropbox/Ronald Cutler/Sidoli-lab/Projects/Single-cell-histone/Analysis/3-calibration-curves/auto/cells/unfiltered")
 
 quant_filter <- read.csv("MS1_calibration_curve_correlations.csv")
  
-setwd("/Users/ronaldcutler/Dropbox\ (EinsteinMed)/Sidoli-lab/Projects/Single-cell-histone/Analysis/4-normalization/auto/filtered")
+setwd("~/EinsteinMed Dropbox/Ronald Cutler/Sidoli-lab/Projects/Single-cell-histone/Analysis/4-normalization/auto/filtered")
 
-obj.quant_filter <- filter_non_linear_peptides(quant_filter, obj.background_filter, correlation = 0.85, p_value = 0.05)
+obj.quant_filter <- filter_non_linear_peptides(quant_filter, obj.background_filter, correlation = 0.8, p_value = 0.05)
 
 saveRDS(obj.quant_filter, "obj.quant_filter.RDS")
 ```
 
-## Cell filtering
-- Mean intensity of cell is 2SD away from average of all cells. These also cluster with empty cells
-- Only use MS1, can try to incorporate MS2 in future?
+## Empty injections
 ```{r}
-# filter out 2, 4, 8 cells
-obj.quant_filter <- obj.quant_filter[,obj.quant_filter$multiplier == 0 |
-                                     obj.quant_filter$multiplier == 1 |
-                                     obj.quant_filter$multiplier == 100]
+obj.filter <- obj.quant_filter[,obj.quant_filter$multiplier != 0]
+```
 
-# empty should be filtered
-obj.cell_filter <- filter_samples(obj.quant_filter, assay = "MS1", dev = 1, filter_low = TRUE, filter_high = FALSE)
+## Save object
+- re-naming and saving in main folder
+```{r}
+setwd("~/EinsteinMed Dropbox/Ronald Cutler/Sidoli-lab/Projects/Single-cell-histone/Analysis/4-normalization/auto")
 
-# change coldata
-obj.cell_filter$multiplier <- factor(obj.cell_filter$multiplier)
+saveRDS(obj.filter, "obj.filter.RDS")
+```
 
-# plot which cells were filtered by batch
-df <- data.frame(condition = data.frame(table(obj$replicate))[,1],
-                 unfiltered = data.frame(table(obj.cell_filter$replicate))[,2],
-                 filtered = data.frame(table(obj.cell_filter$replicate))[,2])
-df <- melt(df)
-pdf("samples_per_batch.pdf",
-    width = 5,
-    height = 5)
-ggplot(df, aes(x = condition, y = value, fill = variable)) +
-  geom_bar(stat = "identity") +
-  coord_flip() +
-  theme_Publication() +
-  labs(title = "Samples per batch", x = "Batch", y = "Frequency", fill = "") +
-  scale_y_continuous(labels = scales::number_format(accuracy = 1)) +
-  scale_fill_brewer()
-dev.off()
+### Output tables
+```{r}
+dir.create("~/single-cell-histone-ptm/4-normalization/auto/unfiltered")
+setwd("~/single-cell-histone-ptm/4-normalization/auto/filtered")
 
-
-saveRDS(obj.cell_filter, "obj.cell_filter.RDS")
+write.csv(assay(obj.filter, "MS1"), "MS1.csv")
+write.csv(assay(obj.filter, "MS2"), "MS2.csv")
+write.csv(assay(obj.filter, "RT"), "RT.csv")
+write.csv(assay(obj.filter, "RT")/40, "RT.relative.csv")
+write.csv(rowData(obj)[,c("Protein.Accession",
+                          "Protein.Gene",
+                          "Peptide.Sequence",
+                          "Precursor.Charge",
+                          "PrecursorMz",
+                          "Peptide.Note.Clean")],
+          "peptidoform-annotation.csv")
 ```
 
 # Filtered Data Charecterization
 
 ## Peptide retention times
 ```{r}
-dir.create("/Users/ronaldcutler/Dropbox\ (EinsteinMed)/Sidoli-lab/Projects/Single-cell-histone/Analysis/4-normalization/auto/filtered")
-setwd("/Users/ronaldcutler/Dropbox\ (EinsteinMed)/Sidoli-lab/Projects/Single-cell-histone/Analysis/4-normalization/auto/filtered")
+dir.create("~/single-cell-histone-ptm/4-normalization/auto/filtered")
+setwd("~/single-cell-histone-ptm/4-normalization/auto/filtered")
 
-df <- assay(obj.cell_filter, "RT") %>% 
+df <- assay(obj.filter, "RT") %>% 
   rownames_to_column("id") %>%
   pivot_longer(
     cols = -id, # This keeps the 'id' column fixed
     names_to = "variable",
     values_to = "value") %>%
-  merge(as.data.frame(colData(obj.cell_filter)), by.x = "variable", by.y = "row.names")
+  merge(as.data.frame(colData(obj.filter)), by.x = "variable", by.y = "row.names")
 
 pdf("peptide_retention_times_filtered_replicate.pdf",
     width = 10,
@@ -1078,28 +1274,24 @@ dev.off()
 
 ### MS1
 ```{r}
-# transform
-assays(obj.cell_filter)[["MS1.log2"]] <- log2(assay(obj.cell_filter, "MS1") + 1)
-
-# imputation
-assays(obj.cell_filter)[["MS1.log2.impute"]] <- missForest(assay(obj.cell_filter, "MS1.log2"))$ximp
+setwd("~/single-cell-histone-ptm/4-normalization/auto/filtered")
 
 # plot by cell
-df <- assay(obj.cell_filter, "MS1.log2") %>% 
+df <- assay(obj.filter, "MS1.log2") %>% 
   rownames_to_column("id") %>%
   pivot_longer(
     cols = -id, # This keeps the 'id' column fixed
     names_to = "variable",
     values_to = "value") %>%
-  merge(as.data.frame(colData(obj.cell_filter)), by.x = "variable", by.y = "row.names")
+  merge(as.data.frame(colData(obj.filter)), by.x = "variable", by.y = "row.names")
 
 pdf("MS1.log2_distribution_filtered_cell.pdf",
-    width = 8,
-    height = 10)
-ggplot(df, aes(x = as.factor(run_id), y = value, fill = as.factor(replicate))) +
+    width = 5,
+    height = 5)
+ggplot(df, aes(x = as.factor(run_id), y = value, fill = replicate)) +
   geom_boxplot(width = 0.7) +
   theme_Publication() +
-  labs(title = "Cell #", x = "Run", y = "Log2(MS1 intensity)", fill = "Replicate") +
+  labs(x = "Run", y = "Log2 MS1 intensity", fill = "Batch") +
   theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1, size = 10)) +
   facet_wrap(.~as.factor(multiplier), scales = "free_x", nrow = 3)
 dev.off()
@@ -1111,36 +1303,65 @@ pdf("MS1.log2_distribution_filtered_peptide.pdf",
 ggplot(df, aes(x = id, y = value)) +
   geom_boxplot() +
   theme_Publication() +
-  labs(title = "Cell #", x = "Peptide", y = "Log2(MS1 intensity)", fill = "Replicate") +
+  labs(title = "Cell #", x = "Peptide", y = "Log2(MS1 intensity)", fill = "Batch") +
   theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1, size = 10)) +
   facet_wrap(.~as.factor(multiplier), scales = "free_x")
 dev.off()
 
 # heatmap
-column_ha = HeatmapAnnotation(replicate = as.factor(obj.cell_filter$replicate),
-                              cell_number = as.factor(obj.cell_filter$multiplier),
-                              experiment = obj.cell_filter$experiment,
-                              run_id = obj.cell_filter$run_id)
-row_ha = rowAnnotation(charge = anno_barplot(rowData(obj.cell_filter)$Precursor.Charge))
+column_ha = HeatmapAnnotation(replicate = as.factor(obj.filter$replicate),
+                              cell_number = as.factor(obj.filter$multiplier),
+                              experiment = obj.filter$experiment,
+                              run_id = obj.filter$run_id)
+row_ha = rowAnnotation(charge = anno_barplot(rowData(obj.filter)$Precursor.Charge))
 
 pdf("MS1.log2_filtered_heatmap.pdf",
     width = 10,
     height = 10)
 set.seed(123)
-Heatmap(scale(assay(obj.cell_filter, "MS1.log2"), center = FALSE, scale = FALSE),
+Heatmap(scale(assay(obj.filter, "MS1.log2"), center = FALSE, scale = FALSE),
         top_annotation = column_ha,
         right_annotation = row_ha,
         heatmap_legend_param = list(title = "Log2(MS1 area)"),
-        cluster_rows = TRUE,
-        cluster_columns = TRUE,
+        cluster_rows = FALSE,
+        cluster_columns = FALSE,
         show_column_names = FALSE,
         row_names_gp = gpar(fontsize = 10))
 dev.off()
 
+# heatmap
+column_ha = HeatmapAnnotation(Replicate = as.factor(obj$replicate),
+                              col = list(Replicate = c("1" = brewer.pal(5, "Set1")[1],
+                                                        "2" = brewer.pal(5, "Set1")[2],
+                                                        "3" = brewer.pal(5, "Set1")[3]
+                                                       )
+                                        )
+                              )
+row_ha = rowAnnotation(charge = anno_barplot(rowData(obj)$Precursor.Charge))
+histone_proteins <- str_extract(rowData(obj)$Protein.Name, "(?<=\\|)[^|_]+(?=_HUMAN)")
+
+pdf("MS1.log2_filtered_heatmap.pdf",
+    width = 9,
+    height = 11)
+Heatmap(assay(obj, "MS1.log2"),
+        top_annotation = column_ha,
+        right_annotation = row_ha,
+        column_title = NULL,
+        heatmap_legend_param = list(title = "Log2(MS1 area)"),
+        cluster_rows = FALSE,
+        cluster_columns = FALSE,
+        show_column_names = TRUE,
+        #split = histone_proteins,
+        cluster_column_slices = FALSE,
+        cluster_row_slices = FALSE,
+        row_names_gp = gpar(fontsize = 10),
+        na_col = "yellow")
+dev.off() 
+
 # PCA
-df <- colData(obj.cell_filter)
+df <- colData(obj.filter)
 df$multiplier <- factor(df$multiplier)
-p <- pca(na.omit(assay(obj.cell_filter, "MS1.log2")),
+p <- pca(na.omit(assay(obj.filter, "MS1.log2")),
          metadata = df,
          center = TRUE, 
          scale = TRUE)
@@ -1182,20 +1403,16 @@ dev.off()
 
 ### MS2
 ```{r}
-# transform
-assays(obj.cell_filter)[["MS2.log2"]] <- log2(assay(obj.cell_filter, "MS2") + 1)
-
-# imputation
-assays(obj.cell_filter)[["MS2.log2.impute"]] <- missForest(assay(obj.cell_filter, "MS2.log2"))$ximp
+setwd("~/single-cell-histone-ptm/4-normalization/auto/filtered")
 
 # plot by cell
-df <- assay(obj.cell_filter, "MS2.log2") %>% 
+df <- assay(obj.filter, "MS2.log2") %>% 
   rownames_to_column("id") %>%
   pivot_longer(
     cols = -id, # This keeps the 'id' column fixed
     names_to = "variable",
     values_to = "value") %>%
-  merge(as.data.frame(colData(obj.cell_filter)), by.x = "variable", by.y = "row.names")
+  merge(as.data.frame(colData(obj.filter)), by.x = "variable", by.y = "row.names")
 
 pdf("MS2.log2_distribution_filtered_cell.pdf",
     width = 8,
@@ -1203,7 +1420,7 @@ pdf("MS2.log2_distribution_filtered_cell.pdf",
 ggplot(df, aes(x = as.factor(run_id), y = value, fill = as.factor(replicate))) +
   geom_boxplot(width = 0.7) +
   theme_Publication() +
-  labs(title = "Cell #", x = "Run", y = "Log2(MS2 intensity)", fill = "Replicate") +
+  labs(title = "Cell #", x = "Run", y = "Log2(MS2 intensity)", fill = "Batch") +
   theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1, size = 10)) +
   facet_wrap(.~as.factor(multiplier), scales = "free_x", nrow = 3)
 dev.off()
@@ -1215,23 +1432,23 @@ pdf("MS2.log2_distribution_filtered_peptide.pdf",
 ggplot(df, aes(x = id, y = value)) +
   geom_boxplot() +
   theme_Publication() +
-  labs(title = "Cell #", x = "Peptide", y = "Log2(MS2 intensity)", fill = "Replicate") +
+  labs(title = "Cell #", x = "Peptide", y = "Log2(MS2 intensity)", fill = "Batch") +
   theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1, size = 10)) +
   facet_wrap(.~as.factor(multiplier), scales = "free_x")
 dev.off()
 
 # heatmap
-column_ha = HeatmapAnnotation(replicate = as.factor(obj.cell_filter$replicate),
-                              cell_number = as.factor(obj.cell_filter$multiplier),
-                              experiment = obj.cell_filter$experiment,
-                              run_id = obj.cell_filter$run_id)
-row_ha = rowAnnotation(charge = anno_barplot(rowData(obj.cell_filter)$Precursor.Charge))
+column_ha = HeatmapAnnotation(replicate = as.factor(obj.filter$replicate),
+                              cell_number = as.factor(obj.filter$multiplier),
+                              experiment = obj.filter$experiment,
+                              run_id = obj.filter$run_id)
+row_ha = rowAnnotation(charge = anno_barplot(rowData(obj.filter)$Precursor.Charge))
 
 pdf("MS2.log2_filtered_heatmap.pdf",
     width = 10,
     height = 10)
 set.seed(123)
-Heatmap(scale(assay(obj.cell_filter, "MS2.log2"), center = FALSE, scale = FALSE),
+Heatmap(scale(assay(obj.filter, "MS2.log2"), center = FALSE, scale = FALSE),
         top_annotation = column_ha,
         right_annotation = row_ha,
         heatmap_legend_param = list(title = "Log2(MS2 area)"),
@@ -1242,9 +1459,9 @@ Heatmap(scale(assay(obj.cell_filter, "MS2.log2"), center = FALSE, scale = FALSE)
 dev.off()
 
 # PCA
-df <- colData(obj.cell_filter)
+df <- colData(obj.filter)
 df$multiplier <- factor(df$multiplier)
-data <- assay(obj.cell_filter, "MS2.log2")
+data <- assay(obj.filter, "MS2.log2")
 data[data == 0] <- NA
 p <- pca(na.omit(data),
          metadata = df,
@@ -1288,14 +1505,16 @@ dev.off()
 
 ### MS1 vs MS2
 ```{r}
-df.1 <- assay(obj.cell_filter, "MS1.log2.impute") %>% 
+setwd("~/single-cell-histone-ptm/4-normalization/auto/filtered")
+
+df.1 <- assay(obj.filter, "MS1.log2") %>% 
   rownames_to_column("id") %>%
   pivot_longer(
     cols = -id, # This keeps the 'id' column fixed
     names_to = "variable",
     values_to = "value")
 
-df.2 <- assay(obj.cell_filter, "MS2.log2.impute") %>% 
+df.2 <- assay(obj.filter, "MS2.log2") %>% 
   rownames_to_column("id") %>%
   pivot_longer(
     cols = -id, # This keeps the 'id' column fixed
@@ -1304,7 +1523,7 @@ df.2 <- assay(obj.cell_filter, "MS2.log2.impute") %>%
 
 df <- cbind(df.1, df.2$value)
 colnames(df) <- c("id", "variable", "ms1", "ms2")
-df <- merge(df, as.data.frame(colData(obj.cell_filter)), by.x = "variable", by.y = "row.names")
+df <- merge(df, as.data.frame(colData(obj.filter)), by.x = "variable", by.y = "row.names")
 df$id <- gsub(";", " ", df$id)
 
 # by cell amount
@@ -1374,244 +1593,117 @@ ggplot(df.summary, aes(x = ms1.mean, y = ms2.mean, color = as.factor(replicate))
 dev.off()
 ```
 
-### Save object
-- re-naming and saving in main folder
+## Derivitization efficiency
 ```{r}
-setwd("/Users/ronaldcutler/Dropbox\ (EinsteinMed)/Sidoli-lab/Projects/Single-cell-histone/Analysis/4-normalization/auto")
+setwd("~/single-cell-histone-ptm/4-normalization/auto/filtered")
 
-obj.filter <- obj.cell_filter
+df <- colData(obj.filter) %>% 
+  as.data.frame() %>%
+  rownames_to_column("run") %>%
+  pivot_longer(
+    cols = starts_with("prop"),
+    names_to = "variable",
+    values_to = "value") %>%
+  filter(multiplier == 1 | multiplier == 100)
+df$variable <- factor(df$variable,
+                      levels = c("prop.eff.underprop.summary",
+                                 "prop.eff.overprop",
+                                 "prop.eff.underprop.first.round",
+                                 "prop.eff.underprop.second.round",
+                                 "prop.eff.underprop.both.round"))
 
-saveRDS(obj.filter, "obj.filter.RDS")
+# summary
+pdf("propionylation_efficiency.pdf",
+    width = 8,
+    height = 5)
+ggplot(df, aes(x = variable, y = value)) +
+  geom_boxplot(aes(fill = replicate), outlier.shape = NA, position = position_dodge(width = 0.75)) +
+  geom_jitter(aes(fill = replicate, shape = as.factor(multiplier)), 
+              position = position_jitterdodge(jitter.width = 0.2, dodge.width = 0.75, jitter.height = 0), 
+              alpha = 0.75, size = 1.5) +
+  scale_y_continuous(labels = label_percent(accuracy = 1)) +
+  scale_x_discrete(labels = c("Under\nPropionylation", 
+                              "Over\nPropionlyation", 
+                              "Under\nPropionylation\n1st Round", 
+                              "Under\nPropionylation\n2nd Round", 
+                              "Under\nPropionylation\n1st & 2nd Rounds")) +
+  labs(x = "", 
+       shape = "# Cells Per Injection",
+       y = "% Raw MS1 Area of Peptide\nNot Correctly Propionylated", 
+       fill = "Batch") +
+  theme_Publication() +
+  theme(legend.box = "vertical",
+        axis.text.x = element_text(angle = 45, vjust = 0.75, hjust=0.5))
+dev.off()
+
+pdf("propionylation_efficiency_summary.pdf",
+    width = 5,
+    height = 5)
+ggplot(subset(df, !grepl("round", variable)), aes(x = variable, y = value)) +
+  geom_boxplot(aes(fill = replicate), outlier.shape = NA, position = position_dodge(width = 0.75)) +
+  geom_jitter(aes(fill = replicate, shape = as.factor(multiplier)), 
+              position = position_jitterdodge(jitter.width = 0.2, dodge.width = 0.75, jitter.height = 0), 
+              alpha = 0.75, size = 1.5) +
+  scale_y_continuous(labels = label_percent(accuracy = 1)) +
+  scale_x_discrete(labels = c("Under\nPropionylation", "Over\nPropionlyation")) +
+  labs(x = "", 
+       shape = "# Cells Per Injection",
+       y = "% Raw MS1 Area of Peptide\nNot Correctly Propionylated", 
+       fill = "Batch") +
+  theme_Publication() +
+  theme(legend.box = "vertical")
+dev.off()
+```
+
+### Correlation to abundance
+- Propionlyation efficiency was estimated using H31-K9[un];K14[un]
+```{r}
+setwd("~/EinsteinMed Dropbox/Ronald Cutler/Sidoli-lab/Projects/Single-cell-histone/Analysis/4-normalization/auto/unfiltered")
+
+# correlation of abundance and prop eff
+df <- assay(obj.filter, "MS1") %>% 
+  rownames_to_column("id") %>%
+  pivot_longer(
+    cols = -id, # This keeps the 'id' column fixed
+    names_to = "variable",
+    values_to = "value") %>%
+  merge(as.data.frame(colData(obj.filter)), by.x = "variable", by.y = "row.names") %>%
+  filter(id == "H31-K9[un];K14[un]")
+
+pdf("MS1.log1p_H31-K9[un];K14[un]_vs_prop.eff.underprop.summary.pdf",
+    width = 5,
+    height = 5)
+ggplot(df, aes(x = log1p(value), y = prop.eff.underprop.summary)) +
+  geom_point(aes(color = replicate), size = 1.5, alpha = 0.75) +
+  stat_smooth(method = "lm") +
+  stat_cor() +
+  labs(x = "H31-K9[un];K14[un]\n  Raw Log1p Intensity",
+       y = "% Raw MS1 Area of Peptide\nUnder Propionylated",
+       color = "Batch") +
+  scale_y_continuous(labels = label_percent(accuracy = 1)) +
+  theme_Publication() +
+  theme(legend.position = "right",       # Position legend on the right
+        legend.direction = "vertical")   # Arrange legend items vertically
+dev.off()
+
+pdf("MS1.log1p_H31-K9[un];K14[un]_vs_prop.eff.overprop.pdf",
+    width = 5,
+    height = 5)
+ggplot(df, aes(x = log1p(value), y = prop.eff.overprop)) +
+  geom_point(aes(color = replicate), size = 1.5, alpha = 0.75) +
+  stat_smooth(method = "lm") +
+  stat_cor() +
+  labs(x = "H31-K9[un];K14[un]\n  Raw Log1p Intensity",
+       y = "% Raw MS1 Area of Peptide\nOver Propionylated",
+       color = "Batch") +
+  scale_y_continuous(labels = label_percent(accuracy = 1)) +
+  theme_Publication() +
+  theme(legend.position = "right",       # Position legend on the right
+        legend.direction = "vertical")   # Arrange legend items vertically
+dev.off()
 ```
 
 # Normalization
-
-## Median center
-
-### MS1
-```{r}
-dir.create("/Users/ronaldcutler/Dropbox\ (EinsteinMed)/Sidoli-lab/Projects/Single-cell-histone/Analysis/4-normalization/auto/normalization")
-setwd("/Users/ronaldcutler/Dropbox\ (EinsteinMed)/Sidoli-lab/Projects/Single-cell-histone/Analysis/4-normalization/auto/normalization")
-
-# median center normalization
-assays(obj.filter)[["MS1.log2.center"]] <- sweep(assay(obj.filter, "MS1.log2"), 2, apply(assay(obj.filter, "MS1.log2"), 2, function(x) median(x, na.rm = TRUE)), FUN = "-")
-
-# imputation
-assays(obj.filter)[["MS1.log2.center.impute"]] <- missForest(assay(obj.filter, "MS1.log2.center"))$ximp
-
-# plot by cell
-df <- assay(obj.filter, "MS1.log2.center.impute") %>% 
-  rownames_to_column("id") %>%
-  pivot_longer(
-    cols = -id, # This keeps the 'id' column fixed
-    names_to = "variable",
-    values_to = "value") %>%
-  merge(as.data.frame(colData(obj.filter)), by.x = "variable", by.y = "row.names")
-
-pdf("MS1.log2.center.impute_distribution_cell.pdf",
-    width = 8,
-    height = 8)
-ggplot(df, aes(x = as.factor(run_id), y = value, fill = as.factor(replicate))) +
-  geom_boxplot(width = 0.7) +
-  theme_Publication() +
-  labs(title = "Cell #", x = "Run", y = "Log2(MS1 intensity)", fill = "Replicate") +
-  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1, size = 10)) +
-  facet_wrap(.~as.factor(multiplier), scales = "free_x", nrow = 2)
-dev.off()
-
-# plot by peptide
-pdf("MS1.log2.center.impute_distribution_peptide.pdf",
-    width = 15,
-    height = 10)
-ggplot(df, aes(x = id, y = value)) +
-  geom_boxplot() +
-  theme_Publication() +
-  labs(title = "Cell #", x = "Peptide", y = "Log2(MS1 intensity)", fill = "Replicate") +
-  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1, size = 10)) +
-  facet_wrap(.~as.factor(multiplier), scales = "free_x")
-dev.off()
-
-# heatmap
-column_ha = HeatmapAnnotation(replicate = as.factor(obj.filter$replicate),
-                              experiment = obj.filter$experiment,
-                              cell_number = as.factor(obj.filter$multiplier),
-                              run_id = obj.filter$run_id)
-row_ha = rowAnnotation(charge = anno_barplot(rowData(obj.filter)$Precursor.Charge))
-
-pdf("MS1.log2.center.impute_heatmap.pdf",
-    width = 10,
-    height = 10)
-set.seed(123)
-Heatmap(scale(assay(obj.filter, "MS1.log2.center.impute"), center = FALSE, scale = FALSE),
-        top_annotation = column_ha,
-        right_annotation = row_ha,
-        heatmap_legend_param = list(title = "Normalized MS1 intensity"),
-        cluster_rows = TRUE,
-        cluster_columns = TRUE,
-        show_column_names = FALSE,
-        row_names_gp = gpar(fontsize = 10))
-dev.off()
-
-# PCA
-p <- pca(na.omit(assay(obj.filter, "MS1.log2.center.impute")),
-         metadata = colData(obj.filter),
-         center = TRUE, 
-         scale = TRUE)
-
-screeplot(p)
-
-# pdf("MS1.log2.center.impute_eigencor.pdf",
-#     width = 5,
-#     height = 5)
-# eigencorplot(p,
-#              main = "Principle component correlations",
-#              cexMain = 1.5,
-#              metavars = c("replicate", "date", "run_id", "multiplier", "total.ms1", "experiment"),
-#              col = viridis(100),
-#              colCorval = 'firebrick',
-#              fontCorval = 2,
-#              cexCorval = 0.5,
-#              rotLabX = 45,
-#              posColKey = 'top')
-# dev.off()
-
-pdf("MS1.log2.center.impute_replicate_pca.pdf",
-    width = 5,
-    height = 5)
-biplot(p,
-       colby = "replicate", 
-       shape = "multiplier",
-       legendPosition = 'right',
-       hline = 0, 
-       vline = 0,
-       gridlines.major = FALSE, 
-       gridlines.minor = FALSE,
-       lab = NULL)
-dev.off()
-```
-
-### MS2
-```{r}
-setwd("/Users/ronaldcutler/Dropbox\ (EinsteinMed)/Sidoli-lab/Projects/Single-cell-histone/Analysis/4-normalization/auto/normalization")
-
-# median center normalization
-assays(obj.filter)[["MS2.log2.center"]] <- sweep(assay(obj.filter, "MS2.log2"), 2, apply(assay(obj.filter, "MS2.log2"), 2, function(x) median(x, na.rm = TRUE)), FUN = "-")
-
-# imputation
-assays(obj.filter)[["MS2.log2.center.impute"]] <- missForest(assay(obj.filter, "MS2.log2.center"))$ximp
-
-# plot by cell
-df <- assay(obj.filter, "MS2.log2.center.impute") %>% 
-  rownames_to_column("id") %>%
-  pivot_longer(
-    cols = -id, # This keeps the 'id' column fixed
-    names_to = "variable",
-    values_to = "value") %>%
-  merge(as.data.frame(colData(obj.filter)), by.x = "variable", by.y = "row.names")
-
-pdf("MS2.log2.center.impute_distribution_cell.pdf",
-    width = 8,
-    height = 8)
-ggplot(df, aes(x = as.factor(run_id), y = value, fill = as.factor(replicate))) +
-  geom_boxplot(width = 0.7) +
-  theme_Publication() +
-  labs(title = "Cell #", x = "Run", y = "Log2(MS2 intensity)", fill = "Replicate") +
-  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1, size = 10)) +
-  facet_wrap(.~as.factor(multiplier), scales = "free_x", nrow = 2)
-dev.off()
-
-# plot by peptide
-pdf("MS2.log2.center.impute_distribution_peptide.pdf",
-    width = 15,
-    height = 10)
-ggplot(df, aes(x = id, y = value)) +
-  geom_boxplot() +
-  theme_Publication() +
-  labs(title = "Cell #", x = "Peptide", y = "Log2(MS2 intensity)", fill = "Replicate") +
-  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1, size = 10)) +
-  facet_wrap(.~as.factor(multiplier), scales = "free_x")
-dev.off()
-
-# heatmap
-column_ha = HeatmapAnnotation(replicate = as.factor(obj.filter$replicate),
-                              experiment = obj.filter$experiment,
-                              cell_number = as.factor(obj.filter$multiplier),
-                              run_id = obj.filter$run_id)
-row_ha = rowAnnotation(charge = anno_barplot(rowData(obj.filter)$Precursor.Charge))
-
-pdf("MS2.log2.center.impute_heatmap.pdf",
-    width = 10,
-    height = 10)
-set.seed(123)
-Heatmap(scale(assay(obj.filter, "MS2.log2.center.impute"), center = FALSE, scale = FALSE),
-        top_annotation = column_ha,
-        right_annotation = row_ha,
-        heatmap_legend_param = list(title = "Normalized MS2 intensity"),
-        cluster_rows = TRUE,
-        cluster_columns = TRUE,
-        show_column_names = FALSE,
-        row_names_gp = gpar(fontsize = 10))
-dev.off()
-
-# PCA
-p <- pca(na.omit(assay(obj.filter, "MS2.log2.center.impute")),
-         metadata = colData(obj.filter),
-         center = TRUE, 
-         scale = TRUE)
-
-screeplot(p)
-
-# pdf("MS2.log2.center.impute_eigencor.pdf",
-#     width = 5,
-#     height = 5)
-# eigencorplot(p,
-#              main = "Principle component correlations",
-#              cexMain = 1.5,
-#              metavars = c("replicate", "date", "run_id", "multiplier", "total.ms2", "experiment"),
-#              col = viridis(100),
-#              colCorval = 'firebrick',
-#              fontCorval = 2,
-#              cexCorval = 0.5,
-#              rotLabX = 45,
-#              posColKey = 'top')
-# dev.off()
-
-pdf("MS2.log2.center.impute_replicate_pca.pdf",
-    width = 5,
-    height = 5)
-biplot(p,
-       colby = "replicate", 
-       shape = "multiplier",
-       legendPosition = 'right',
-       hline = 0, 
-       vline = 0,
-       gridlines.major = FALSE, 
-       gridlines.minor = FALSE,
-       lab = NULL)
-dev.off()
-```
-
-### Save object
-```{r}
-setwd("/Users/ronaldcutler/Dropbox\ (EinsteinMed)/Sidoli-lab/Projects/Single-cell-histone/Analysis/4-normalization/auto")
-
-saveRDS(obj.filter, "obj.filter.RDS")
-```
-
-### Output normalized intensities
-```{r}
-dir.create("/Users/ronaldcutler/Dropbox\ (EinsteinMed)/Sidoli-lab/Projects/Single-cell-histone/Analysis/4-normalization/auto/tables")
-setwd("/Users/ronaldcutler/Dropbox\ (EinsteinMed)/Sidoli-lab/Projects/Single-cell-histone/Analysis/4-normalization/auto/tables")
-
-write.csv(assay(obj.filter, "MS1.log2.center.impute"), "MS1.log2.center.impute.csv")
-write.csv(assay(obj.filter, "MS2.log2.center.impute"), "MS2.log2.center.impute.csv")
-```
-
-## Normalize by peptide with no modification sites
-- This is how it is done in the LINCS project (Malivina)
-- H3(41-49), Y[+56]RPGTVALR and H4(68-78) D[+56]AVTYTEHAK[+56]R
-- Not done since signal of these peptides too low
-
 
 ## Peptide ratio
 - group all histones ptms from same peptide
@@ -1620,36 +1712,38 @@ write.csv(assay(obj.filter, "MS2.log2.center.impute"), "MS2.log2.center.impute.c
 
 ### MS1 ratio
 ```{r}
-setwd("/Users/ronaldcutler/Dropbox\ (EinsteinMed)/Sidoli-lab/Projects/Single-cell-histone/Analysis/4-normalization/auto/normalization")
+dir.create("~/single-cell-histone-ptm/4-normalization/auto/normalization")
+setwd("~/single-cell-histone-ptm/4-normalization/auto/normalization")
 
 ptm.ratio.ms1 <- calculate_ptm_ratio(obj.filter, assay = "MS1")
 
 pdf("MS1.ratio_cell.pdf",
     width = 8,
     height = 8)
-ggplot(ptm.ratio.ms1, aes(x = as.factor(run_id), y = ratio, fill = as.factor(experiment))) +
+ggplot(ptm.ratio.ms1, aes(x = as.factor(run_id), y = ratio, fill = as.factor(replicate))) +
   geom_boxplot(width = 0.7) +
   theme_Publication() +
-  labs(title = "Cell #", x = "Run", y = "MS1 peptide ratio", fill = "Experiment") +
+  labs(x = "Injection", y = "Log1p(MS1 peptide ratio)", fill = "Batch") +
   theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1, size = 10)) +
   facet_wrap(.~as.factor(multiplier), scales = "free_x", nrow = 2)
 dev.off()
 
 pdf("MS1.ratio.log1p_cell.pdf",
-    width = 8,
-    height = 8)
-ggplot(ptm.ratio.ms1, aes(x = as.factor(run_id), y = ratio.log1p, fill = as.factor(experiment))) +
+    width = 5,
+    height = 5)
+ggplot(ptm.ratio.ms1, aes(x = as.factor(run_id), y = ratio.log1p, fill = as.factor(replicate))) +
   geom_boxplot(width = 0.7) +
   theme_Publication() +
-  labs(title = "Cell #", x = "Run", y = "MS1 peptide ratio", fill = "Experiment") +
-  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1, size = 10)) +
+  labs(x = "Injection", y = "Log1p(MS1 peptide ratio)", fill = "Batch") +
+    theme(axis.text.x = element_blank(),
+        axis.ticks.x = element_blank()) + 
   facet_wrap(.~as.factor(multiplier), scales = "free_x", nrow = 2)
 dev.off()
 ```
 
 ### MS2 ratio
 ```{r}
-setwd("/Users/ronaldcutler/Dropbox\ (EinsteinMed)/Sidoli-lab/Projects/Single-cell-histone/Analysis/4-normalization/auto/normalization")
+setwd("~/single-cell-histone-ptm/4-normalization/auto/normalization")
 
 ptm.ratio.ms2 <- calculate_ptm_ratio(obj.filter, assay = "MS2")
 
@@ -1679,7 +1773,7 @@ dev.off()
 ### Single PTM ratios
 - summing percentages of same types of mods on same amino acid across peptides
 ```{r}
-setwd("/Users/ronaldcutler/Dropbox\ (EinsteinMed)/Sidoli-lab/Projects/Single-cell-histone/Analysis/4-normalization/auto/normalization")
+setwd("~/single-cell-histone-ptm/4-normalization/auto/normalization")
 
 sptm.ratio.ms1 <- calculate_single_ptm_ratio(ptm.ratio.ms1, input = "long")
 sptm.ratio.ms1.log1p <- log1p(sptm.ratio.ms1)
@@ -1689,7 +1783,7 @@ sptm.ratio.ms1.log1p <- log1p(sptm.ratio.ms1)
 - Summing percentages of MS1
 - Improvement: Use raw MS1 values to calculate new percentages
 ```{r}
-setwd("/Users/ronaldcutler/Dropbox\ (EinsteinMed)/Sidoli-lab/Projects/Single-cell-histone/Analysis/4-normalization/auto/normalization")
+setwd("~/single-cell-histone-ptm/4-normalization/auto/normalization")
 
 global.ratio.ms1 <- calculate_global_ptm_ratio(sptm.ratio.ms1)
 global.ratio.ms1.log1p <- log1p(global.ratio.ms1)
@@ -1699,7 +1793,7 @@ global.ratio.ms1.log1p <- log1p(global.ratio.ms1)
 - Summing percentages of MS1 for each combo of peptides: mono, di, tri, tetra
 - Improvement: Use raw MS1 values to calculate new percentages
 ```{r}
-setwd("/Users/ronaldcutler/Dropbox\ (EinsteinMed)/Sidoli-lab/Projects/Single-cell-histone/Analysis/4-normalization/auto/normalization")
+setwd("~/single-cell-histone-ptm/4-normalization/auto/normalization")
 
 h4.ac.ratio.ms1 <- calculate_h4_ac_summary_ratio(ptm.ratio.ms1, input = "long")
 h4.ac.ratio.ms1.log1p <- log1p(h4.ac.ratio.ms1)
@@ -1710,10 +1804,10 @@ h4.ac.ratio.ms1.log1p <- log1p(h4.ac.ratio.ms1)
 - Using multi assay experiment to hold the summarized ratios
 - IMPROVEMENT: add sample map
 ```{r}
-setwd("/Users/ronaldcutler/Dropbox\ (EinsteinMed)/Sidoli-lab/Projects/Single-cell-histone/Analysis/4-normalization/auto/normalization")
+setwd("~/single-cell-histone-ptm/4-normalization/auto/normalization")
 
 # create summarized experiment from ratios
-obj.filter.ratio <- load_ratio_summarized_experiment(ptm.ratio.ms1, 
+obj.filter.ratio <- load_summarized_experiment_ratio(ptm.ratio.ms1, 
                                                      ptm.ratio.ms2, 
                                                      obj.filter)
 
@@ -1741,11 +1835,31 @@ obj.filter.ratio.multi <- MultiAssayExperiment(experiments = ExperimentList(list
                                                colData = colData(obj.filter.ratio))
 ```
 
-### Visualize
+## Visualize
 
 #### MS1 ratio
 ```{r}
-setwd("/Users/ronaldcutler/Dropbox\ (EinsteinMed)/Sidoli-lab/Projects/Single-cell-histone/Analysis/4-normalization/auto/normalization")
+setwd("~/single-cell-histone-ptm/4-normalization/auto/normalization")
+
+# plot by cell
+df <- assay(obj.filter.ratio.multi[["ptm.ratio"]], "MS1.ratio.log1p") %>% 
+  rownames_to_column("id") %>%
+  pivot_longer(
+    cols = -id, # This keeps the 'id' column fixed
+    names_to = "variable",
+    values_to = "value") %>%
+  merge(as.data.frame(colData(obj.filter.ratio.multi)), by.x = "variable", by.y = "row.names")
+
+pdf("MS1.ratio.log1p_distribution_filtered_cell.pdf",
+    width = 5,
+    height = 5)
+ggplot(df, aes(x = as.factor(run_id), y = value, fill = as.factor(replicate))) +
+  geom_boxplot(width = 0.7) +
+  theme_Publication() +
+  labs(title = "Cell #", x = "Run", y = "Log1p relative abundance", fill = "Batch") +
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1, size = 10)) +
+  facet_wrap(.~as.factor(multiplier), scales = "free_x", nrow = 3)
+dev.off()
 
 # heatmap
 column_ha = HeatmapAnnotation(replicate = as.factor(obj.filter.ratio.multi$replicate),
@@ -1764,7 +1878,7 @@ Heatmap(assay(experiments(obj.filter.ratio.multi)[["ptm.ratio"]], "MS1.ratio.log
         heatmap_legend_param = list(title = "MS1 Peptide Ratio"),
         cluster_rows = TRUE,
         cluster_columns = TRUE,
-        show_column_names = FALSE,
+        show_column_names = TRUE,
         row_names_gp = gpar(fontsize = 10))
 dev.off()
 
@@ -1797,7 +1911,7 @@ eigencorplot(p,
 dev.off()
 
 pdf("MS1.ratio.log1p_replicate_pca.pdf",
-    width = 5,
+    width = 4,
     height = 5)
 biplot(p,
        colby = "replicate", 
@@ -1806,7 +1920,23 @@ biplot(p,
        hline = 0, 
        vline = 0,
        lab = NULL) +
-  labs(color = "Replicate",
+  labs(color = "Batch",
+       shape = "Multiplier") +
+  theme_Publication() +
+  theme(legend.box="vertical", 
+        legend.margin=margin())
+dev.off()
+
+pdf("MS1.ratio.log1p_replicate_names_pca.pdf",
+    width = 4,
+    height = 5)
+biplot(p,
+       colby = "replicate", 
+       shape = "multiplier",
+       legendPosition = 'top',
+       hline = 0, 
+       vline = 0) +
+  labs(color = "Batch",
        shape = "Multiplier") +
   theme_Publication() +
   theme(legend.box="vertical", 
@@ -1816,7 +1946,7 @@ dev.off()
 
 #### MS2 ratio
 ```{r}
-setwd("/Users/ronaldcutler/Dropbox\ (EinsteinMed)/Sidoli-lab/Projects/Single-cell-histone/Analysis/4-normalization/auto/normalization")
+setwd("~/single-cell-histone-ptm/4-normalization/auto/normalization")
 
 # heatmap
 column_ha = HeatmapAnnotation(replicate = as.factor(obj.filter.ratio$replicate),
@@ -1840,7 +1970,7 @@ Heatmap(assay(experiments(obj.filter.ratio.multi)[["ptm.ratio"]], "MS2.ratio.log
 dev.off()
 
 # PCA
-p <- pca(assay(experiments(obj.filter.ratio.multi)[["ptm.ratio"]], "MS2.ratio.log1p"),
+p <- pca(na.omit(assay(experiments(obj.filter.ratio.multi)[["ptm.ratio"]], "MS2.ratio.log1p")),
          metadata = colData(obj.filter.ratio),
          center = TRUE, 
          scale = TRUE)
@@ -1887,7 +2017,7 @@ dev.off()
 
 #### Single PTM ratio
 ```{r}
-setwd("/Users/ronaldcutler/Dropbox\ (EinsteinMed)/Sidoli-lab/Projects/Single-cell-histone/Analysis/4-normalization/auto/normalization")
+setwd("~/single-cell-histone-ptm/4-normalization/auto/normalization")
 
 # heatmap
 column_ha = HeatmapAnnotation(replicate = as.factor(obj.filter.ratio.multi$replicate),
@@ -1927,7 +2057,7 @@ dev.off()
 
 #### Global PTM ratio
 ```{r}
-setwd("/Users/ronaldcutler/Dropbox\ (EinsteinMed)/Sidoli-lab/Projects/Single-cell-histone/Analysis/4-normalization/auto/normalization")
+setwd("~/single-cell-histone-ptm/4-normalization/auto/normalization")
 
 # heatmap
 column_ha = HeatmapAnnotation(replicate = as.factor(obj.filter.ratio.multi$replicate),
@@ -1967,7 +2097,7 @@ dev.off()
 
 #### Summarized H4 PTM ratio
 ```{r}
-setwd("/Users/ronaldcutler/Dropbox\ (EinsteinMed)/Sidoli-lab/Projects/Single-cell-histone/Analysis/4-normalization/auto/normalization")
+setwd("~/single-cell-histone-ptm/4-normalization/auto/normalization")
 
 # heatmap
 column_ha = HeatmapAnnotation(replicate = as.factor(obj.filter.ratio.multi$replicate),
@@ -2005,19 +2135,53 @@ Heatmap(assay(experiments(obj.filter.ratio.multi)[["h4.ac.ratio"]], "MS1.ratio.l
 dev.off()
 ```
 
+#### Propionylation efficiency correlates
+- Propionlyation efficiency was estimated using H31-K18[un];K23[un]
+```{r}
+setwd("~/single-cell-histone-ptm/4-normalization/auto/normalization")
+
+# correlation of abundance and prop eff
+df <- assay(obj.filter.ratio.multi[["ptm.ratio"]], "MS1.ratio.log1p") %>% 
+  rownames_to_column("id") %>%
+  pivot_longer(
+    cols = -id, # This keeps the 'id' column fixed
+    names_to = "variable",
+    values_to = "value") %>%
+  merge(as.data.frame(colData(obj)), by.x = "variable", by.y = "row.names") %>%
+  filter(id == "H31-K18[un];K23[un]")
+
+pdf("MS1.log1p_vs_prop.eff.underprop.summary.pdf",
+    width = 5,
+    height = 5)
+ggplot(df, aes(x = log1p(value), y = prop.eff.underprop.summary)) +
+  geom_point(aes(color = replicate), size = 1.5, alpha = 0.75) +
+  stat_smooth(method = "lm") +
+  stat_cor() +
+  labs(x = "H31-K18[un];K23[un]\n  Raw Log1p Intensity",
+       y = "% Raw MS1 Area of Peptide\nNot Correctly Propionylated",
+       color = "Batch") +
+  scale_y_continuous(labels = label_percent(accuracy = 1)) +
+  theme_Publication() +
+  theme(legend.position = "right",       # Position legend on the right
+        legend.direction = "vertical")   # Arrange legend items vertically
+dev.off()
+```
+
 ### Save object
 ```{r}
-setwd("/Users/ronaldcutler/Dropbox\ (EinsteinMed)/Sidoli-lab/Projects/Single-cell-histone/Analysis/4-normalization/auto")
+setwd("~/single-cell-histone-ptm/4-normalization/auto")
 
 saveRDS(obj.filter.ratio.multi, "obj.filter.ratio.multi.RDS")
 ```
 
 ### Output tables
 ```{r}
-dir.create("/Users/ronaldcutler/Dropbox\ (EinsteinMed)/Sidoli-lab/Projects/Single-cell-histone/Analysis/4-normalization/auto/tables")
-setwd("/Users/ronaldcutler/Dropbox\ (EinsteinMed)/Sidoli-lab/Projects/Single-cell-histone/Analysis/4-normalization/auto/tables")
+dir.create("~/single-cell-histone-ptm/4-normalization/auto/normalization")
+setwd("~/single-cell-histone-ptm/4-normalization/auto/normalization")
 
 write.csv(assay(obj.filter.ratio.multi[["ptm.ratio"]], "RT"), "RT.csv")
+write.csv(assay(obj.filter.ratio.multi[["ptm.ratio"]], "RT")/40, "RT.relative.csv")
+write.csv(rowData(obj.filter.ratio.multi[["ptm.ratio"]])[,c(1:5)], "peptidoform-annotation.csv")
 
 # untransformed
 write.csv(assay(obj.filter.ratio.multi[["ptm.ratio"]], "MS1.ratio"), "MS1.ratio.csv")
@@ -2034,211 +2198,37 @@ write.csv(assay(obj.filter.ratio.multi[["h4.ac.ratio"]], "MS1.ratio.log1p"), "MS
 
 # Batch correction
 
-## Median center
-
-### MS1
-```{r}
-dir.create("/Users/ronaldcutler/Dropbox\ (EinsteinMed)/Sidoli-lab/Projects/Single-cell-histone/Analysis/4-normalization/auto/batch-corrected")
-setwd("/Users/ronaldcutler/Dropbox\ (EinsteinMed)/Sidoli-lab/Projects/Single-cell-histone/Analysis/4-normalization/auto/batch-corrected")
-# assess batch effects
-# batchQC(assay(obj.filter, "MS1.log2.center"), obj.filter$replicate, NULL,
-#         report_file="MS1.log2.center.no-correction.html", report_dir=".",
-#         report_option_binary="111111111",
-#         view_report=FALSE, interactive=FALSE, batchqc_output=FALSE)
-
-# correct batch using combat
-# keeping the number of cells and condition be variables of interest
-# pdata <- data.frame(colnames(obj.filter), obj.filter$replicate, obj.filter$multiplier)
-# modmatrix = model.matrix(~as.integer(obj.filter$multiplier), data=pdata)
-# assays(obj.filter, withDimnames=FALSE)[["MS1.log2.center.impute.batchCorrect"]] <- as.data.frame(ComBat(dat = assay(obj.filter, "MS1.log2.center"), 
-#                                                                batch = obj.filter$replicate, 
-#                                                                mod = modmatrix, 
-#                                                                ref.batch = 1))
-
-# assess correction
-# batchQC(assay(obj.filter, "MS1.log2.center.impute.batchCorrect"), obj.filter$replicate, as.integer(obj.filter$condition),
-#         report_file="MS1.log2.center.correction.html", report_dir=".",
-#         report_option_binary="111111111",
-#         view_report=FALSE, interactive=FALSE, batchqc_output=FALSE)
-
-assays(obj.filter, withDimnames=FALSE)[["MS1.log2.center.impute.batchCorrect"]] <- removeBatchEffect(assay(obj.filter, "MS1.log2.center.impute"),
-                                                                                                       batch = obj.filter$replicate)
-
-
-# heatmap
-column_ha = HeatmapAnnotation(replicate = as.factor(obj.filter$replicate),
-                              cell_number = as.factor(obj.filter$multiplier))
-row_ha = rowAnnotation(charge = anno_barplot(rowData(obj.filter)$Precursor.Charge))
-
-pdf("MS1.log2.center.impute.batchCorrect_heatmap.pdf",
-    width = 10,
-    height = 10)
-set.seed(123)
-Heatmap(scale(assay(obj.filter, "MS1.log2.center.impute.batchCorrect"), center = FALSE, scale = FALSE),
-        top_annotation = column_ha,
-        right_annotation = row_ha,
-        heatmap_legend_param = list(title = "Log2(MS2 area)"),
-        cluster_rows = TRUE,
-        cluster_columns = TRUE,
-        show_column_names = FALSE,
-        row_names_gp = gpar(fontsize = 10))
-dev.off()
-
-# PCA
-p <- pca(na.omit(assay(obj.filter, "MS1.log2.center.impute.batchCorrect")),
-         metadata = colData(obj.filter),
-         center = TRUE, 
-         scale = TRUE)
-
-screeplot(p)
-
-pdf("MS1.log2.center.impute.batchCorrect_eigencor.pdf",
-    width = 5,
-    height = 5)
-eigencorplot(p,
-             main = "Principle component correlations",
-             cexMain = 1.5,
-             metavars = c("replicate", "date", "run_id", "multiplier"),
-             col = viridis(100),
-             colCorval = 'firebrick',
-             fontCorval = 2,
-             cexCorval = 0.5,
-             rotLabX = 45,
-             posColKey = 'top')
-dev.off()
-
-pdf("MS1.log2.center.impute.batchCorrect_replicate_pca.pdf",
-    width = 5,
-    height = 5)
-biplot(p,
-       colby = "replicate", 
-       shape = "multiplier",
-       legendPosition = 'top',
-       hline = 0, 
-       vline = 0,
-       lab = NULL) +
-  labs(color = "Replicate",
-       shape = "# Cells") +
-  theme_Publication() +
-  theme(legend.box="vertical", 
-        legend.margin=margin())
-dev.off()
-```
-
-### MS2
-```{r}
-dir.create("/Users/ronaldcutler/Dropbox\ (EinsteinMed)/Sidoli-lab/Projects/Single-cell-histone/Analysis/4-normalization/auto/batch-corrected")
-setwd("/Users/ronaldcutler/Dropbox\ (EinsteinMed)/Sidoli-lab/Projects/Single-cell-histone/Analysis/4-normalization/auto/batch-corrected")
-# assess batch effects
-# batchQC(assay(obj.filter, "MS2.log2.center"), obj.filter$replicate, NULL,
-#         report_file="MS2.log2.center.no-correction.html", report_dir=".",
-#         report_option_binary="111111111",
-#         view_report=FALSE, interactive=FALSE, batchqc_output=FALSE)
-
-# correct batch using combat
-# keeping the number of cells and condition be variables of interest
-# pdata <- data.frame(colnames(obj.filter), obj.filter$replicate, obj.filter$multiplier)
-# modmatrix = model.matrix(~as.integer(obj.filter$multiplier), data=pdata)
-# assays(obj.filter, withDimnames=FALSE)[["MS2.log2.center.impute.batchCorrect"]] <- as.data.frame(ComBat(dat = assay(obj.filter, "MS2.log2.center"), 
-#                                                                batch = obj.filter$replicate, 
-#                                                                mod = modmatrix, 
-#                                                                ref.batch = 1))
-
-# assess correction
-# batchQC(assay(obj.filter, "MS2.log2.center.impute.batchCorrect"), obj.filter$replicate, as.integer(obj.filter$condition),
-#         report_file="MS2.log2.center.correction.html", report_dir=".",
-#         report_option_binary="111111111",
-#         view_report=FALSE, interactive=FALSE, batchqc_output=FALSE)
-
-assays(obj.filter, withDimnames=FALSE)[["MS2.log2.center.impute.batchCorrect"]] <- removeBatchEffect(assay(obj.filter, "MS2.log2.center.impute"),
-                                                                                                       batch = obj.filter$replicate)
-
-
-# heatmap
-column_ha = HeatmapAnnotation(replicate = as.factor(obj.filter$replicate),
-                              cell_number = as.factor(obj.filter$multiplier))
-row_ha = rowAnnotation(charge = anno_barplot(rowData(obj.filter)$Precursor.Charge))
-
-pdf("MS2.log2.center.impute.batchCorrect_heatmap.pdf",
-    width = 10,
-    height = 10)
-set.seed(123)
-Heatmap(scale(assay(obj.filter, "MS2.log2.center.impute.batchCorrect"), center = FALSE, scale = FALSE),
-        top_annotation = column_ha,
-        right_annotation = row_ha,
-        heatmap_legend_param = list(title = "Log2(MS2 area)"),
-        cluster_rows = TRUE,
-        cluster_columns = TRUE,
-        show_column_names = FALSE,
-        row_names_gp = gpar(fontsize = 10))
-dev.off()
-
-# PCA
-p <- pca(na.omit(assay(obj.filter, "MS2.log2.center.impute.batchCorrect")),
-         metadata = colData(obj.filter),
-         center = TRUE, 
-         scale = TRUE)
-
-screeplot(p)
-
-pdf("MS2.log2.center.impute.batchCorrect_eigencor.pdf",
-    width = 5,
-    height = 5)
-eigencorplot(p,
-             main = "Principle component correlations",
-             cexMain = 1.5,
-             metavars = c("replicate", "date", "run_id", "multiplier"),
-             col = viridis(100),
-             colCorval = 'firebrick',
-             fontCorval = 2,
-             cexCorval = 0.5,
-             rotLabX = 45,
-             posColKey = 'top')
-dev.off()
-
-pdf("MS2.log2.center.impute.batchCorrect_replicate_pca.pdf",
-    width = 5,
-    height = 5)
-biplot(p,
-       colby = "replicate", 
-       shape = "multiplier",
-       legendPosition = 'top',
-       hline = 0, 
-       vline = 0,
-       lab = NULL) +
-  labs(color = "Replicate",
-       shape = "# Cells") +
-  theme_Publication() +
-  theme(legend.box="vertical", 
-        legend.margin=margin())
-dev.off()
-```
-
-### Save object
-```{r}
-setwd("/Users/ronaldcutler/Dropbox\ (EinsteinMed)/Sidoli-lab/Projects/Single-cell-histone/Analysis/4-normalization/auto")
-
-saveRDS(obj.filter, "obj.filter.RDS")
-```
-
-### Output normalized intensities
-```{r}
-setwd("/Users/ronaldcutler/Dropbox\ (EinsteinMed)/Sidoli-lab/Projects/Single-cell-histone/Analysis/4-normalization/auto/tables")
-
-write.csv(assay(obj.filter, "MS1.log2.center.impute.batchCorrect"), "MS1.log2.center.impute.batchCorrect.csv")
-write.csv(assay(obj.filter, "MS2.log2.center.impute.batchCorrect"), "MS2.log2.center.impute.batchCorrect.csv")
-```
-
 ## Peptide ratio
 
 ### MS1
 ```{r}
-dir.create("/Users/ronaldcutler/Dropbox\ (EinsteinMed)/Sidoli-lab/Projects/Single-cell-histone/Analysis/4-normalization/auto/batch-corrected")
-setwd("/Users/ronaldcutler/Dropbox\ (EinsteinMed)/Sidoli-lab/Projects/Single-cell-histone/Analysis/4-normalization/auto/batch-corrected")
+dir.create("~/single-cell-histone-ptm/4-normalization/auto/batch-corrected")
+setwd("~/single-cell-histone-ptm/4-normalization/auto/batch-corrected")
 
 assays(obj.filter.ratio.multi[["ptm.ratio"]], withDimnames=FALSE)[["MS1.ratio.log1p.batchCorrect"]] <- 
   removeBatchEffect(assay(obj.filter.ratio.multi[["ptm.ratio"]], "MS1.ratio.log1p"),
                     batch = obj.filter.ratio.multi$replicate)
+
+# plot by cell
+df <- assay(obj.filter.ratio.multi[["ptm.ratio"]], "MS1.ratio.log1p.batchCorrect") %>% 
+  as.data.frame() %>%
+  rownames_to_column("id") %>%
+  pivot_longer(
+    cols = -id, # This keeps the 'id' column fixed
+    names_to = "variable",
+    values_to = "value") %>%
+  merge(as.data.frame(colData(obj.filter)), by.x = "variable", by.y = "row.names")
+
+pdf("MS1.ratio.log1p.batchCorrect_distribution.pdf",
+    width = 5,
+    height = 5)
+ggplot(df, aes(x = as.factor(run_id), y = value, fill = replicate)) +
+  geom_boxplot(width = 0.7) +
+  theme_Publication() +
+  labs(x = "Run", y = "Log1p Relative Abundance", fill = "Batch") +
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1, size = 10)) +
+  facet_wrap(.~as.factor(multiplier), scales = "free_x", nrow = 3)
+dev.off()
 
 # heatmap
 column_ha = HeatmapAnnotation(replicate = as.factor(obj.filter.ratio.multi$replicate),
@@ -2298,7 +2288,7 @@ biplot(p,
        hline = 0, 
        vline = 0,
        lab = NULL) +
-  labs(color = "Replicate",
+  labs(color = "Batch",
        shape = "Multiplier") +
   theme_Publication() +
   theme(legend.box="vertical", 
@@ -2320,7 +2310,7 @@ dev.off()
 
 ### MS2
 ```{r}
-setwd("/Users/ronaldcutler/Dropbox\ (EinsteinMed)/Sidoli-lab/Projects/Single-cell-histone/Analysis/4-normalization/auto/batch-corrected")
+setwd("~/single-cell-histone-ptm/4-normalization/auto/batch-corrected")
 
 assays(obj.filter.ratio.multi[["ptm.ratio"]], withDimnames=FALSE)[["MS2.ratio.log1p.batchCorrect"]] <- 
   removeBatchEffect(assay(obj.filter.ratio.multi[["ptm.ratio"]], "MS2.ratio.log1p"),
@@ -2347,7 +2337,7 @@ Heatmap(assay(obj.filter.ratio.multi[["ptm.ratio"]], "MS2.ratio.log1p.batchCorre
 dev.off()
 
 # PCA
-p <- pca(assay(obj.filter.ratio.multi[["ptm.ratio"]], "MS2.ratio.log1p.batchCorrect"),
+p <- pca(na.omit(assay(obj.filter.ratio.multi[["ptm.ratio"]], "MS2.ratio.log1p.batchCorrect")),
          metadata = colData(obj.filter.ratio.multi),
          center = TRUE, 
          scale = TRUE)
@@ -2395,7 +2385,7 @@ dev.off()
 ### Single PTM ratio
 - Recalculate using new batch corrected ms1 ratios
 ```{r}
-setwd("/Users/ronaldcutler/Dropbox\ (EinsteinMed)/Sidoli-lab/Projects/Single-cell-histone/Analysis/4-normalization/auto/batch-corrected")
+setwd("~/single-cell-histone-ptm/4-normalization/auto/batch-corrected")
 
 assays(obj.filter.ratio.multi[["sptm.ratio"]], withDimnames=FALSE)[["MS1.ratio.log1p.batchCorrect"]] <- 
   removeBatchEffect(assay(obj.filter.ratio.multi[["sptm.ratio"]], "MS1.ratio.log1p"),
@@ -2423,7 +2413,7 @@ dev.off()
 ### Global PTM ratio
 - Recalculate using new batch corrected ms1 ratios
 ```{r}
-setwd("/Users/ronaldcutler/Dropbox\ (EinsteinMed)/Sidoli-lab/Projects/Single-cell-histone/Analysis/4-normalization/auto/batch-corrected")
+setwd("~/single-cell-histone-ptm/4-normalization/auto/batch-corrected")
 
 assays(obj.filter.ratio.multi[["global.ratio"]], withDimnames=FALSE)[["MS1.ratio.log1p.batchCorrect"]] <- 
   removeBatchEffect(assay(obj.filter.ratio.multi[["global.ratio"]], "MS1.ratio.log1p"),
@@ -2450,7 +2440,7 @@ dev.off()
 
 ### Summarized H4 PTM ratio
 ```{r}
-setwd("/Users/ronaldcutler/Dropbox\ (EinsteinMed)/Sidoli-lab/Projects/Single-cell-histone/Analysis/4-normalization/auto/batch-corrected")
+setwd("~/single-cell-histone-ptm/4-normalization/auto/batch-corrected")
 
 assays(obj.filter.ratio.multi[["h4.ac.ratio"]], withDimnames=FALSE)[["MS1.ratio.log1p.batchCorrect"]] <- 
   removeBatchEffect(assay(obj.filter.ratio.multi[["h4.ac.ratio"]], "MS1.ratio.log1p"),
@@ -2477,16 +2467,21 @@ dev.off()
 
 ### Save object
 ```{r}
-setwd("/Users/ronaldcutler/Dropbox\ (EinsteinMed)/Sidoli-lab/Projects/Single-cell-histone/Analysis/4-normalization/auto")
+setwd("~/single-cell-histone-ptm/4-normalization/auto")
 
 saveRDS(obj.filter.ratio.multi, "obj.filter.ratio.multi.RDS")
 ```
 
 ### Output tables
 ```{r}
-dir.create("/Users/ronaldcutler/Dropbox\ (EinsteinMed)/Sidoli-lab/Projects/Single-cell-histone/Analysis/4-normalization/auto/tables")
-setwd("/Users/ronaldcutler/Dropbox\ (EinsteinMed)/Sidoli-lab/Projects/Single-cell-histone/Analysis/4-normalization/auto/tables")
+dir.create("~/single-cell-histone-ptm/4-normalization/auto/batch-corrected")
+setwd("~/single-cell-histone-ptm/4-normalization/auto/batch-corrected")
 
+write.csv(assay(obj.filter.ratio.multi[["ptm.ratio"]], "RT"), "RT.csv")
+write.csv(assay(obj.filter.ratio.multi[["ptm.ratio"]], "RT")/40, "RT.relative.csv")
+write.csv(rowData(obj.filter.ratio.multi[["ptm.ratio"]])[,c(1:5)], "peptidoform-annotation.csv")
+
+# batch corrected
 write.csv(assay(obj.filter.ratio.multi[["ptm.ratio"]], "MS1.ratio.log1p.batchCorrect"), "MS1.ratio.log1p.batchCorrect.csv")
 write.csv(assay(obj.filter.ratio.multi[["sptm.ratio"]], "MS1.ratio.log1p.batchCorrect"), "MS1.ratio.log1p.batchCorrect.csv")
 write.csv(assay(obj.filter.ratio.multi[["global.ratio"]], "MS1.ratio.log1p.batchCorrect"), "MS1.ratio.log1p.batchCorrect.csv")

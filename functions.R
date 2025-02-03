@@ -27,6 +27,7 @@ categorize_peptide <- function(peptide) {
 
 # The input format looks like this: K9unK14un
 format_peptide_note <- function(peptide_note) {
+  
   # Use regex to match patterns like K9me3 and K14ac
   # The pattern looks for a "K" followed by digits (\d+), and then any letters (\w+), optionally followed by digits (\d*)
   parts <- regmatches(peptide_note, gregexpr("K\\d+[a-z]+\\d*", peptide_note, perl = TRUE))[[1]]
@@ -98,16 +99,28 @@ ptm_readable_translation <- function(ptms_vector) {
 # Filters out peptides based on skyline annotations
 # or if there are peptides with multiple precursors
 # IMPROVEMENT: Combine information from multiple precursors
-filter_peptides <- function(df){
+filter_peptides_skyline <- function(df){
   
   # Remove peptides with "" or "NOT FOUND" peptide note (just the unmod and no modifications)
-  if (nrow(df[df$Peptide.Note == "" | grepl("NOT FOUND", df$Peptide.Note), ]) > 0) {
+  if (nrow(df[df$Peptide.Note == "" | 
+              grepl("NOT FOUND", df$Peptide.Note) |
+              grepl("NOTFOUND", df$Peptide.Note), ]) > 0) {
     
     print("Peptides with no PTMs")
-    print(as.character(unique(df[df$Peptide.Note == "" | df$Peptide.Note == "NOT FOUND", "Peptide.Sequence"])))
+    print(as.character(unique(df[df$Peptide.Note == "" | 
+                                   df$Peptide.Note == "NOT FOUND" |
+                                   df$Peptide.Note == "NOTFOUND", "Peptide.Sequence"])))
     
-    # Use parentheses to ensure proper logical operation
-    df.filter.1 <- df[!(df$Peptide.Note == "" | df$Peptide.Note == "NOT FOUND"), ]
+    # Remove " NOT FOUND" and any other string after this from Peptide.Note
+    df$Peptide.Note <- sub(" NOT FOUND.*", "", df$Peptide.Note)
+    
+    # Remove " NOT FOUND" and any other string after this from Peptide.Note
+    df$Peptide.Note <- sub("(NOTFOUND).*", "", df$Peptide.Note)
+    
+    # clean peptide note names
+    df$Peptide.Note <- gsub(" ", "", df$Peptide.Note)
+    
+    df.filter.1 <- df
     
   } else {
     
@@ -115,12 +128,6 @@ filter_peptides <- function(df){
     df.filter.1 <- df
     
   }
-  
-  # Remove " NOT FOUND" and any other string after this from Peptide.Note
-  df.filter.1$Peptide.Note <- sub(" NOT FOUND.*", "", df.filter.1$Peptide.Note)
-  
-  # clean peptide note names
-  df.filter.1$Peptide.Note <- gsub(" ", "", df.filter.1$Peptide.Note)
   
   # For peptides with multiple precursor charges, take the one with higher signal
   if (nrow(df.filter.1 %>% 
@@ -150,6 +157,115 @@ filter_peptides <- function(df){
   return(df.filter.2)
 }
 
+filter_peptides_diann <- function(df){
+  
+  # Remove peptides with "" or "NOT FOUND" peptide note (just the unmod and no modifications)
+  if (nrow(df[df$Peptide.Note == "" | 
+              grepl("NOT FOUND", df$Peptide.Note) |
+              grepl("NOTFOUND", df$Peptide.Note), ]) > 0) {
+    
+    print("Peptides with no PTMs")
+    print(as.character(unique(df[df$Peptide.Note == "" | 
+                                   df$Peptide.Note == "NOT FOUND" |
+                                   df$Peptide.Note == "NOTFOUND", "Peptide.Sequence"])))
+    
+    # Remove " NOT FOUND" and any other string after this from Peptide.Note
+    df.filter.1$Peptide.Note <- sub(" NOT FOUND.*", "", df.filter.1$Peptide.Note)
+    
+    # Remove " NOT FOUND" and any other string after this from Peptide.Note
+    df.filter.1$Peptide.Note <- sub("(NOTFOUND).*", "", df.filter.1$Peptide.Note)
+    
+    # clean peptide note names
+    df.filter.1$Peptide.Note <- gsub(" ", "", df.filter.1$Peptide.Note)
+    
+  } else {
+    
+    print("All peptides have PTMs")
+    df.filter.1 <- df
+    
+  }
+  
+  # For peptides with multiple precursor charges, take the one with higher signal
+  if (nrow(df.filter.1 %>% 
+           group_by(Protein.Names) %>% 
+           summarise(n_distinct_charges = n_distinct(Precursor.Charge)) %>% 
+           filter(n_distinct_charges > 1)) > 0) {
+    filter.2 <- df.filter.1 %>%
+      group_by(Protein.Names) %>%
+      filter(n_distinct(Precursor.Charge) > 1) %>%
+      ungroup() %>%
+      group_by(Protein.Names, Precursor.Charge) %>%
+      summarise(Ms1.Area = mean(Ms1.Area, na.rm = TRUE)) %>%
+      group_by(Protein.Names) %>%
+      filter(Ms1.Area == min(Ms1.Area)) %>% # min as these are the ones to filter out
+      ungroup()
+    
+    df.filter.2 <- df.filter.1 %>%
+      anti_join(filter.2, by = c("Protein.Names", "Precursor.Charge"))
+    
+    print("Peptidoforms with multiple precursor charge")
+    print(unique(semi_join(df.filter.1, filter.2, by = c("Protein.Names", "Precursor.Charge"))$Protein.Names))
+    
+  } else {
+    print("All PTMs have a single precursor charge")
+  }
+  
+  return(df.filter.2)
+}
+
+filter_peptides_diann_old <- function(df){
+  
+  # Remove peptides with "" or "NOT FOUND" peptide note (just the unmod and no modifications)
+  if (nrow(df[df$Peptide.Note == "" | 
+              grepl("NOT FOUND", df$Peptide.Note) |
+              grepl("NOTFOUND", df$Peptide.Note), ]) > 0) {
+    
+    print("Peptides with no PTMs")
+    print(as.character(unique(df[df$Peptide.Note == "" | 
+                                 df$Peptide.Note == "NOT FOUND" |
+                                 df$Peptide.Note == "NOTFOUND", "Peptide.Sequence"])))
+    
+  } else {
+    
+    print("All peptides have PTMs")
+    df.filter.1 <- df
+    
+  }
+  
+  # Remove " NOT FOUND" and any other string after this from Peptide.Note
+  df.filter.1$Peptide.Note <- sub(" NOT FOUND.*", "", df.filter.1$Peptide.Note)
+  
+  # clean peptide note names
+  df.filter.1$Peptide.Note <- gsub(" ", "", df.filter.1$Peptide.Note)
+  
+  # For peptides with multiple precursor charges, take the one with higher signal
+  if (nrow(df.filter.1 %>% 
+           group_by(Peptide.Note) %>% 
+           summarise(n_distinct_charges = n_distinct(Precursor.Charge)) %>% 
+           filter(n_distinct_charges > 1)) > 0) {
+    filter.2 <- df.filter.1 %>%
+      group_by(Peptide.Note) %>%
+      filter(n_distinct(Precursor.Charge) > 1) %>%
+      ungroup() %>%
+      group_by(Peptide.Note, Precursor.Charge) %>%
+      summarise(Ms1.Area = mean(Ms1.Area, na.rm = TRUE)) %>%
+      group_by(Peptide.Note) %>%
+      filter(Ms1.Area == min(Ms1.Area)) %>% # min as these are the ones to filter out
+      ungroup()
+    
+    df.filter.2 <- df.filter.1 %>%
+      anti_join(filter.2, by = c("Peptide.Note", "Precursor.Charge"))
+    
+    print("Peptidoforms with multiple precursor charge")
+    print(unique(semi_join(df.filter.1, filter.2, by = c("Peptide.Note", "Precursor.Charge"))$Peptide.Note))
+    
+  } else {
+    print("All PTMs have a single precursor charge")
+  }
+  
+  return(df.filter.2)
+}
+
 
 deconvolute_h4 <- function(df.combine.filter){
   
@@ -157,7 +273,7 @@ deconvolute_h4 <- function(df.combine.filter){
   h4.fragment <- df.combine.filter %>%
     subset(!Fragment.Ion %in% c("precursor", "precursor [M+1]", "precursor [M+2]")) %>%
     subset(grepl("H4-K5", Peptide.Note)) %>%
-    select(Replicate.Name, Peptide.Note, Fragment.Ion, Area) %>%
+    select(Replicate.Name, Peptide.Note, Fragment.Ion, Transition.Area) %>%
     group_by(Peptide.Note) %>% 
     nest()
   
@@ -173,8 +289,8 @@ deconvolute_h4 <- function(df.combine.filter){
   mono.k5 <- h4.fragment[h4.fragment$Peptide.Note == "H4-K5[ac];K8[un];K12[un];K16[un]", ]$data[[1]]
   mono.k5 <- mono.k5 %>%
     group_by(Replicate.Name) %>%
-    summarize(total.area.fragment = sum(Area, na.rm = TRUE),
-              unique.area.fragment = sum(Area[Fragment.Ion %in% c("b2", "b3", "b4")], na.rm = TRUE))
+    summarize(total.Transition.Area.fragment = sum(Transition.Area, na.rm = TRUE),
+              unique.Transition.Area.fragment = sum(Transition.Area[Fragment.Ion %in% c("b2", "b3", "b4")], na.rm = TRUE))
   
   # get K8
   # get sum for all fragments
@@ -182,8 +298,8 @@ deconvolute_h4 <- function(df.combine.filter){
   mono.k8 <- h4.fragment[h4.fragment$Peptide.Note == "H4-K5[un];K8[ac];K12[un];K16[un]", ]$data[[1]]
   mono.k8 <- mono.k8 %>%
     group_by(Replicate.Name) %>%
-    summarize(total.area.fragment = sum(Area, na.rm = TRUE),
-              unique.area.fragment = sum(Area[Fragment.Ion %in% c("b5", "b6", "b7", "b8")], na.rm = TRUE))
+    summarize(total.Transition.Area.fragment = sum(Transition.Area, na.rm = TRUE),
+              unique.Transition.Area.fragment = sum(Transition.Area[Fragment.Ion %in% c("b5", "b6", "b7", "b8")], na.rm = TRUE))
   
   # get K12
   # get sum for all fragments
@@ -191,13 +307,13 @@ deconvolute_h4 <- function(df.combine.filter){
   mono.k12 <- h4.fragment[h4.fragment$Peptide.Note == "H4-K5[un];K8[un];K12[ac];K16[un]", ]$data[[1]]
   mono.k12 <- mono.k12 %>%
     group_by(Replicate.Name) %>%
-    summarize(total.area.fragment = sum(Area, na.rm = TRUE),
-              unique.area.fragment = sum(Area[Fragment.Ion %in% c("y9", "y8", "y7", "y6")], na.rm = TRUE))
+    summarize(total.Transition.Area.fragment = sum(Transition.Area, na.rm = TRUE),
+              unique.Transition.Area.fragment = sum(Transition.Area[Fragment.Ion %in% c("y9", "y8", "y7", "y6")], na.rm = TRUE))
   
   # first get the proportion of unique fragments
   # K5 prop unique = K5 (unique) / all fragments
   mono.peak1 <- mono.k5 %>%
-    mutate(k5.prop = unique.area.fragment/total.area.fragment) %>%
+    mutate(k5.prop = unique.Transition.Area.fragment/total.Transition.Area.fragment) %>%
     select(Replicate.Name, k5.prop)
   
   # this is what we need to doeonvolute
@@ -208,11 +324,11 @@ deconvolute_h4 <- function(df.combine.filter){
   # second get proportion of combo unique frags
   # K8 prop combo = K8 (combo unique) / all fragments
   mono.k8 <- mono.k8 %>%
-    mutate(prop.combo = unique.area.fragment/total.area.fragment)
+    mutate(prop.combo = unique.Transition.Area.fragment/total.Transition.Area.fragment)
   
   # K12 prop combo = K12 (combo unique) / all fragments
   mono.k12 <- mono.k12 %>%
-    mutate(prop.combo = unique.area.fragment/total.area.fragment)
+    mutate(prop.combo = unique.Transition.Area.fragment/total.Transition.Area.fragment)
   
   # third get how their combo prop relates to the total proportion
   # K8 prop rel = K8 prop combo / (K8 prop combo + K12 prop combo)
@@ -259,8 +375,8 @@ deconvolute_h4 <- function(df.combine.filter){
   di.k5k8 <- h4.fragment[h4.fragment$Peptide.Note == "H4-K5[ac];K8[ac];K12[un];K16[un]", ]$data[[1]]
   di.k5k8 <- di.k5k8 %>%
     group_by(Replicate.Name) %>%
-    summarize(total.area.fragment = sum(Area, na.rm = TRUE),
-              unique.area.fragment = sum(Area[Fragment.Ion %in% c("b5", "b6", "b7", "b8")], na.rm = TRUE))
+    summarize(total.Transition.Area.fragment = sum(Transition.Area, na.rm = TRUE),
+              unique.Transition.Area.fragment = sum(Transition.Area[Fragment.Ion %in% c("b5", "b6", "b7", "b8")], na.rm = TRUE))
   
   # K5K12
   # get sum for all fragments
@@ -268,8 +384,8 @@ deconvolute_h4 <- function(df.combine.filter){
   di.k5k12 <- h4.fragment[h4.fragment$Peptide.Note == "H4-K5[ac];K8[un];K12[ac];K16[un]", ]$data[[1]]
   di.k5k12 <- di.k5k12 %>%
     group_by(Replicate.Name) %>%
-    summarize(total.area.fragment = sum(Area, na.rm = TRUE),
-              unique.area.fragment = sum(Area[Fragment.Ion %in% c("b2", "b3", "b4")], na.rm = TRUE))
+    summarize(total.Transition.Area.fragment = sum(Transition.Area, na.rm = TRUE),
+              unique.Transition.Area.fragment = sum(Transition.Area[Fragment.Ion %in% c("b2", "b3", "b4")], na.rm = TRUE))
   
   # K8K12
   # get sum for all fragments
@@ -277,13 +393,13 @@ deconvolute_h4 <- function(df.combine.filter){
   di.k8k12 <- h4.fragment[h4.fragment$Peptide.Note == "H4-K5[un];K8[ac];K12[ac];K16[un]", ]$data[[1]]
   di.k8k12 <- di.k8k12 %>%
     group_by(Replicate.Name) %>%
-    summarize(total.area.fragment = sum(Area, na.rm = TRUE),
-              unique.area.fragment = sum(Area[Fragment.Ion %in% c("b2", "b3", "b4")], na.rm = TRUE))
+    summarize(total.Transition.Area.fragment = sum(Transition.Area, na.rm = TRUE),
+              unique.Transition.Area.fragment = sum(Transition.Area[Fragment.Ion %in% c("b2", "b3", "b4")], na.rm = TRUE))
   
   # first get the proportion of unique fragments
   # K5K8 prop unique = K5K8 (unique) / all fragments
   di.peak1 <- di.k5k8 %>%
-    mutate(k5k8.prop = unique.area.fragment/total.area.fragment) %>%
+    mutate(k5k8.prop = unique.Transition.Area.fragment/total.Transition.Area.fragment) %>%
     select(Replicate.Name, k5k8.prop)
   
   # K5K12 + K8K12 prop = 1 - K5K8 props
@@ -293,11 +409,11 @@ deconvolute_h4 <- function(df.combine.filter){
   # second get proportion of combo unique frags
   # K5k12 prop combo = K5k12 (combo unique) / all fragments
   di.k5k12 <- di.k5k12 %>%
-    mutate(prop.combo = unique.area.fragment/total.area.fragment)
+    mutate(prop.combo = unique.Transition.Area.fragment/total.Transition.Area.fragment)
   
   # K8k12 prop combo = K8k12 (combo unique) / all fragments
   di.k8k12 <- di.k8k12 %>%
-    mutate(prop.combo = unique.area.fragment/total.area.fragment)
+    mutate(prop.combo = unique.Transition.Area.fragment/total.Transition.Area.fragment)
   
   # third get how their combo prop relates to the total proportion
   # K8k12 prop rel = K8k12 prop combo / (K8k12 prop combo + k8k12 prop combo)
@@ -342,8 +458,8 @@ deconvolute_h4 <- function(df.combine.filter){
   di.k12k16 <- h4.fragment[h4.fragment$Peptide.Note == "H4-K5[un];K8[un];K12[ac];K16[ac]", ]$data[[1]]
   di.k12k16 <- di.k12k16 %>%
     group_by(Replicate.Name) %>%
-    summarize(total.area.fragment = sum(Area, na.rm = TRUE),
-              unique.area.fragment = sum(Area[Fragment.Ion %in% c("y9", "y8", "y7", "y6")], na.rm = TRUE))
+    summarize(total.Transition.Area.fragment = sum(Transition.Area, na.rm = TRUE),
+              unique.Transition.Area.fragment = sum(Transition.Area[Fragment.Ion %in% c("y9", "y8", "y7", "y6")], na.rm = TRUE))
   
   # k8k16
   # get sum for all fragments
@@ -351,8 +467,8 @@ deconvolute_h4 <- function(df.combine.filter){
   di.k8k16 <- h4.fragment[h4.fragment$Peptide.Note == "H4-K5[un];K8[ac];K12[un];K16[ac]", ]$data[[1]]
   di.k8k16 <- di.k8k16 %>%
     group_by(Replicate.Name) %>%
-    summarize(total.area.fragment = sum(Area, na.rm = TRUE),
-              unique.area.fragment = sum(Area[Fragment.Ion %in% c("b2", "b3", "b4")], na.rm = TRUE))
+    summarize(total.Transition.Area.fragment = sum(Transition.Area, na.rm = TRUE),
+              unique.Transition.Area.fragment = sum(Transition.Area[Fragment.Ion %in% c("b2", "b3", "b4")], na.rm = TRUE))
   
   # k5k16
   # get sum for all fragments
@@ -360,13 +476,13 @@ deconvolute_h4 <- function(df.combine.filter){
   di.k5k16 <- h4.fragment[h4.fragment$Peptide.Note == "H4-K5[ac];K8[un];K12[un];K16[ac]", ]$data[[1]]
   di.k5k16 <- di.k5k16 %>%
     group_by(Replicate.Name) %>%
-    summarize(total.area.fragment = sum(Area, na.rm = TRUE),
-              unique.area.fragment = sum(Area[Fragment.Ion %in% c("b2", "b3", "b4")], na.rm = TRUE))
+    summarize(total.Transition.Area.fragment = sum(Transition.Area, na.rm = TRUE),
+              unique.Transition.Area.fragment = sum(Transition.Area[Fragment.Ion %in% c("b2", "b3", "b4")], na.rm = TRUE))
   
   # first get the proportion of unique fragments
   # k12k16 prop unique = k12k16 (unique) / all fragments
   di.peak2 <- di.k12k16 %>%
-    mutate(k12k16.prop = unique.area.fragment/total.area.fragment) %>%
+    mutate(k12k16.prop = unique.Transition.Area.fragment/total.Transition.Area.fragment) %>%
     select(Replicate.Name, k12k16.prop)
   
   # k8k16 + k5k16 prop = 1 - k12k16 props
@@ -376,11 +492,11 @@ deconvolute_h4 <- function(df.combine.filter){
   # second get proportion of combo unique frags
   # k8k16 prop combo = k8k16 (combo unique) / all fragments
   di.k8k16 <- di.k8k16 %>%
-    mutate(prop.combo = unique.area.fragment/total.area.fragment)
+    mutate(prop.combo = unique.Transition.Area.fragment/total.Transition.Area.fragment)
   
   # k5k16 prop combo = k5k16 (combo unique) / all fragments
   di.k5k16 <- di.k5k16 %>%
-    mutate(prop.combo = unique.area.fragment/total.area.fragment)
+    mutate(prop.combo = unique.Transition.Area.fragment/total.Transition.Area.fragment)
   
   # third get how their combo prop relates to the total proportion
   di.k8k16 <- di.k8k16 %>%
@@ -423,8 +539,8 @@ deconvolute_h4 <- function(df.combine.filter){
   tri.k8k12k16 <- h4.fragment[h4.fragment$Peptide.Note == "H4-K5[un];K8[ac];K12[ac];K16[ac]", ]$data[[1]]
   tri.k8k12k16 <- tri.k8k12k16 %>%
     group_by(Replicate.Name) %>%
-    summarize(total.area.fragment = sum(Area, na.rm = TRUE),
-              unique.area.fragment = sum(Area[Fragment.Ion %in% c("b2", "b3", "b4")], na.rm = TRUE))
+    summarize(total.Transition.Area.fragment = sum(Transition.Area, na.rm = TRUE),
+              unique.Transition.Area.fragment = sum(Transition.Area[Fragment.Ion %in% c("b2", "b3", "b4")], na.rm = TRUE))
   
   # k5k12k16
   # get sum for all fragments
@@ -432,8 +548,8 @@ deconvolute_h4 <- function(df.combine.filter){
   tri.k5k12k16 <- h4.fragment[h4.fragment$Peptide.Note == "H4-K5[ac];K8[un];K12[ac];K16[ac]", ]$data[[1]]
   tri.k5k12k16 <- tri.k5k12k16 %>%
     group_by(Replicate.Name) %>%
-    summarize(total.area.fragment = sum(Area, na.rm = TRUE),
-              unique.area.fragment = sum(Area[Fragment.Ion %in% c("b5", "b6", "b7", "b8", "y9", "y8", "y8", "y6")], na.rm = TRUE))
+    summarize(total.Transition.Area.fragment = sum(Transition.Area, na.rm = TRUE),
+              unique.Transition.Area.fragment = sum(Transition.Area[Fragment.Ion %in% c("b5", "b6", "b7", "b8", "y9", "y8", "y8", "y6")], na.rm = TRUE))
   
   # k5k8k16
   # get sum for all fragments
@@ -441,13 +557,13 @@ deconvolute_h4 <- function(df.combine.filter){
   tri.k5k8k16 <- h4.fragment[h4.fragment$Peptide.Note == "H4-K5[ac];K8[ac];K12[un];K16[ac]", ]$data[[1]]
   tri.k5k8k16 <- tri.k5k8k16 %>%
     group_by(Replicate.Name) %>%
-    summarize(total.area.fragment = sum(Area, na.rm = TRUE),
-              unique.area.fragment = sum(Area[Fragment.Ion %in% c("b5", "b6", "b7", "b8", "y9", "y8", "y8", "y6")], na.rm = TRUE))
+    summarize(total.Transition.Area.fragment = sum(Transition.Area, na.rm = TRUE),
+              unique.Transition.Area.fragment = sum(Transition.Area[Fragment.Ion %in% c("b5", "b6", "b7", "b8", "y9", "y8", "y8", "y6")], na.rm = TRUE))
   
   # first get the proportion of unique fragments
   # k8k12k16 prop unique = k8k12k16 (unique) / all fragments
   tri.peak1 <- tri.k8k12k16 %>%
-    mutate(k8k12k16.prop = unique.area.fragment/total.area.fragment) %>%
+    mutate(k8k12k16.prop = unique.Transition.Area.fragment/total.Transition.Area.fragment) %>%
     select(Replicate.Name, k8k12k16.prop)
   
   # k5k12k16 + K8K12 prop = 1 - k8k12k16 props
@@ -457,11 +573,11 @@ deconvolute_h4 <- function(df.combine.filter){
   # second get proportion of combo unique frags
   # k5k12k16 prop combo = k5k12k16 (combo unique) / all fragments
   tri.k5k12k16 <- tri.k5k12k16 %>%
-    mutate(prop.combo = unique.area.fragment/total.area.fragment)
+    mutate(prop.combo = unique.Transition.Area.fragment/total.Transition.Area.fragment)
   
   # k5k8k16 prop combo = k5k8k16 (combo unique) / all fragments
   tri.k5k8k16 <- tri.k5k8k16 %>%
-    mutate(prop.combo = unique.area.fragment/total.area.fragment)
+    mutate(prop.combo = unique.Transition.Area.fragment/total.Transition.Area.fragment)
   
   # third get how their combo prop relates to the total proportion
   tri.k5k12k16 <- tri.k5k12k16 %>%
@@ -502,12 +618,187 @@ deconvolute_h4 <- function(df.combine.filter){
   )
 }
 
+# df <- df.combine.filter
+# coldata <- coldata
+load_summarized_experiment_diann <- function(df, coldata){
+  
+  # extract assay data
+  
+    # protein group MS2 based quantification
+    df.quant.pg <- df %>%
+      select(Peptide.Note, Run, PG.Quantity) %>%
+      spread(key = Run, value = PG.Quantity)
+    row.names(df.quant.pg) <- df.quant.pg$Peptide.Note
+    df.quant.pg <- df.quant.pg[,-1]
+    
+    # precursor MS2 based quantification
+    df.quant.pr <- df %>%
+      select(Peptide.Note, Run, Precursor.Quantity) %>%
+      spread(key = Run, value = Precursor.Quantity)
+    row.names(df.quant.pr) <- df.quant.pr$Peptide.Note
+    df.quant.pr <- df.quant.pr[,-1]
+    
+    # precursor MS1 total area
+    df.area.ms1 <- df %>%
+      select(Peptide.Note, Run, Ms1.Area) %>%
+      spread(key = Run, value = Ms1.Area)
+    row.names(df.area.ms1) <- df.area.ms1$Peptide.Note
+    df.area.ms1 <- df.area.ms1[,-1]
+    
+    # MS2 quant split by fragments
+    split_to_vector <- function(cell_value) {
+      # Remove the trailing semicolon if it exists
+      cell_value <- gsub(";$", "", cell_value)
+      # Split the string into individual numeric values and return as a vector
+      as.numeric(unlist(strsplit(cell_value, ";")))
+    }
+    df.quant.ms2 <- df %>%
+      select(Peptide.Note, Run, Fragment.Quant.Raw) %>%
+      mutate(Fragment.Quant.Raw.Split = sapply(Fragment.Quant.Raw, split_to_vector)) %>%
+      select(Peptide.Note, Run, Fragment.Quant.Raw.Split) %>%
+      spread(key = Run, value = Fragment.Quant.Raw.Split)
+    row.names(df.quant.ms2) <- df.quant.ms2$Peptide.Note
+    df.quant.ms2 <- df.quant.ms2[,-1]
+    
+    # MS2 quant sum
+    sum_cell_values <- function(cell_value) {
+      # Remove the trailing semicolon if it exists
+      cell_value <- gsub(";$", "", cell_value)
+      # Split the string into individual numeric values
+      numbers <- as.numeric(unlist(strsplit(cell_value, ";")))
+      # Sum the values
+      sum(numbers, na.rm = TRUE)
+    }
+    df.quant.ms2.sum <- df %>%
+      select(Peptide.Note, Run, Fragment.Quant.Raw) %>%
+      mutate(Fragment.Quant.Raw.Sum = sapply(Fragment.Quant.Raw, sum_cell_values)) %>%
+      select(Peptide.Note, Run, Fragment.Quant.Raw.Sum) %>%
+      spread(key = Run, value = Fragment.Quant.Raw.Sum)
+    row.names(df.quant.ms2.sum) <- df.quant.ms2.sum$Peptide.Note
+    df.quant.ms2.sum <- df.quant.ms2.sum[,-1]
+    
+    # retention time
+    df.rt <- df %>%
+      select(Peptide.Note, Run, RT) %>%
+      spread(key = Run, value = RT)
+    row.names(df.rt) <- df.rt$Peptide.Note
+    df.rt <- df.rt[,-1]
+    
+    # ion mobility
+    df.im <- df %>%
+      select(Peptide.Note, Run, IM) %>%
+      spread(key = Run, value = IM)
+    row.names(df.im) <- df.im$Peptide.Note
+    df.im <- df.im[,-1]
+  
+    # q value
+    df.qvalue <- df %>%
+      select(Peptide.Note, Run, Q.Value) %>%
+      spread(key = Run, value = Q.Value)
+    row.names(df.qvalue) <- df.qvalue$Peptide.Note
+    df.qvalue <- df.qvalue[,-1]
+  
+  # extract row data
+  
+    # fragment info
+    # y4-unknown^1/517.3092651;y5-unknown^1/701.4304199;y3-unknown^1/446.2721558;b3-unknown^1/383.2288818;b5-unknown^1/654.3820801;
+    # unsure what the numeric values here are
+    extract_before_hyphen <- function(input_string) {
+      # Remove any trailing semicolon
+      input_string <- gsub(";$", "", input_string)
+      # Split the string by semicolons
+      split_string <- unlist(strsplit(input_string, ";"))
+      # Extract the part before the hyphen using regular expressions
+      result <- gsub("-.*", "", split_string)
+      # Return unique values
+      unique(result)
+    }
+    df.frag.info <- df %>%
+      select(Peptide.Note, Fragment.Info) %>%
+      distinct() %>%
+      mutate(Fragments = sapply(Fragment.Info, extract_before_hyphen)) %>%
+      select(Peptide.Note, Fragments)
+    
+    # precursor charge
+    df.charge.pr <- df %>%
+      select(Peptide.Note, Precursor.Charge) %>%
+      distinct()
+  
+    # global qvalue
+    df.qvalue.global <- df %>%
+      select(Peptide.Note, Global.Q.Value) %>%
+      distinct()
+    
+    # protein name
+    
+    # uniprot
+    
+    # modified sequence
+    df.mod.seq <- df %>%
+      select(Peptide.Note, Modified.Sequence) %>%
+      distinct()
+    
+    # peptide sequence
+    df.seq <- df %>%
+      select(Peptide.Note, Stripped.Sequence) %>%
+      distinct()
+    
+    # combine
+    rowdata <- cbind(df.mod.seq,
+                     df.seq,
+                     df.charge.pr,
+                     df.qvalue.global,
+                     df.frag.info)
+    row.names(rowdata) <- rowdata$Peptide.Note
+    rowdata <- rowdata %>%
+      select(-starts_with("Peptide.Note"))
+    rowdata <- rowdata[match(rownames(df.quant.pg), rownames(rowdata)),]
+    
+  # filter coldata by unique run id
+  # Extract the part after the last underscore from colnames of df.ms1
+  extracted_run_id <- sapply(strsplit(colnames(df.quant.pg), "_", fixed = TRUE), function(x) tail(x, 1))
+  coldata.filter <- coldata %>%
+    filter(run_id %in% extracted_run_id)
+  
+  coldata.filter <- coldata.filter[match(extracted_run_id, coldata.filter$run_id),]
+  
+  # create summarized exp obj
+  se <- SummarizedExperiment(assays = list(
+    protein.quant = df.quant.pg,
+    precursor.quant = df.quant.pr,
+    ms1.area = df.area.ms1,
+    ms2.quant = df.quant.ms2,
+    ms2.quant.sum = df.quant.ms2.sum,
+    retention.time = df.rt,
+    ion.mobility = df.im,
+    qvalue = df.qvalue),
+    rowData = rowdata,
+    colData = coldata.filter)
+  
+  return(se)
+}
+
 # Note that this does not change NA values to 0
 # IMPROVEMENT: Be able to hold fragment ion data mapping 
 # multiple fragment ions to a single peptide
-load_skyline_summarized_experiment <- function(df, coldata){
+load_summarized_experiment_skyline <- function(df, coldata){
   
-  # extract assay data
+  # remove spaces from strings
+  df[] <- lapply(df, function(x) {
+    if (is.character(x)) {
+      gsub(" ", "", x) # Remove spaces
+    } else {
+      x # Leave numeric columns unchanged
+    }
+  })
+  
+  coldata[] <- lapply(coldata, function(x) {
+    if (is.character(x)) {
+      gsub(" ", "", x) # Remove spaces
+    } else {
+      x # Leave numeric columns unchanged
+    }
+  })
   
   # ms1 total area
   df.ms1 <- df %>%
@@ -534,24 +825,53 @@ load_skyline_summarized_experiment <- function(df, coldata){
   df.rt <- df.rt[,-1]
   
   # extract row data
-  rowdata <- df %>%
-    subset(!Fragment.Ion %in% c("precursor", "precursor [M+1]", "precursor [M+2]")) %>%
-    select(Protein.Name, Peptide.Sequence, Peptide.Note, Precursor.Charge, Fragment.Ion) %>%
-    unique() %>%
-    group_by(Protein.Name, Peptide.Sequence, Peptide.Note, Precursor.Charge) %>%
-    summarise(Fragment.Ions = list(Fragment.Ion), .groups = 'drop') %>%
+  rowdata.pep <- df %>%
+    subset(Fragment.Ion == "precursor") %>%
+    select(Protein.Accession, 
+           Protein.Gene, 
+           Peptide.Sequence, 
+           Peptide.Note, 
+           Precursor.Charge,
+           PrecursorMz) %>%
+    distinct(Peptide.Note, .keep_all = TRUE) %>%
     as.data.frame()
-  rownames(rowdata) <- rowdata$Peptide.Note
-  rowdata$Peptide.Note <- NULL
-  rowdata <- rowdata[match(rownames(df.ms1), rownames(rowdata)),]
+  rownames(rowdata.pep) <- rowdata.pep$Peptide.Note
+  rowdata.pep$Peptide.Note <- NULL
+  
+  rowdata.frag <- df %>%
+    subset(!Fragment.Ion %in% c("precursor", "precursor [M+1]", "precursor [M+2]")) %>%
+    select(Peptide.Note,
+           Fragment.Ion,
+           ProductMz,
+           Product.Charge,
+           Transition.Area,
+           ProductMz) %>%
+    group_by(Peptide.Note) %>%
+    summarise(Fragment.Ion = list(Fragment.Ion),
+              ProductMz = list(ProductMz),
+              Product.Charge = list(Product.Charge),
+              Transition.Area = list(Transition.Area)) %>%
+    as.data.frame()
+    rownames(rowdata.frag) <- rowdata.frag$Peptide.Note
+    rowdata.frag$Peptide.Note <- NULL
+    
+    rowdata <- cbind(rowdata.pep, rowdata.frag)
+    
+    # cleaned histone peptidoform names
+    rowdata$Peptide.Note.Clean <- gsub("\\[|\\]|;|-", "", rownames(rowdata))
+    
+    rowdata <- rowdata[match(rownames(df.ms1), rownames(rowdata)),]
   
   # filter coldata by unique run id
   # Extract the part after the last underscore from colnames of df.ms1
   extracted_run_id <- sapply(strsplit(colnames(df.ms1), "_", fixed = TRUE), function(x) tail(x, 1))
   
   # Filter colData
+  # add sum of MS1 and MS2
   coldata.filter <- coldata %>%
-    filter(run_id %in% extracted_run_id)
+    filter(run_id %in% extracted_run_id) %>%
+    mutate(total.ms1 = colSums(df.ms1, na.rm = TRUE),
+           total.ms2 = colSums(df.ms2, na.rm = TRUE))
   
   coldata.filter <- coldata.filter[match(extracted_run_id, coldata.filter$run_id),]
   
@@ -565,12 +885,13 @@ load_skyline_summarized_experiment <- function(df, coldata){
   return(se)
 }
 
-load_skyline_prop_eff_summarized_experiment <- function(df, coldata){
+load_summarized_experiment_prop_eff_skyline <- function(df, coldata){
   
   # extract assay data
   
   # ms1 total area
   df.ms1 <- df %>%
+    filter(Fragment.Ion == "precursor") %>%
     select(Peptide.Note, Replicate.Name, Total.Area.MS1) %>%
     spread(key = Replicate.Name, value = Total.Area.MS1)
   row.names(df.ms1) <- df.ms1$Peptide.Note
@@ -578,20 +899,15 @@ load_skyline_prop_eff_summarized_experiment <- function(df, coldata){
   
   # ms2 total area
   df.ms2 <- df %>%
+    filter(Fragment.Ion == "precursor") %>%
     select(Peptide.Note, Replicate.Name, Total.Area.Fragment) %>%
     spread(key = Replicate.Name, value = Total.Area.Fragment)
   row.names(df.ms2) <- df.ms2$Peptide.Note
   df.ms2 <- df.ms2[,-1]
   
-  # ms2 fragment area
-  # df.ms2.frag <- df %>%
-  #   select(Peptide.Note, Replicate.Name, Area) %>%
-  #   spread(key = Replicate.Name, value = Area)
-  # row.names(df.ms2.frag) <- df.ms2.frag$Peptide.Note
-  # df.ms2.frag <- df.ms2.frag[,-1]
-  
   # retention time
   df.rt <- df %>%
+    filter(Fragment.Ion == "precursor") %>%
     select(Peptide.Note, Replicate.Name, Peptide.Retention.Time) %>%
     spread(key = Replicate.Name, value = Peptide.Retention.Time)
   row.names(df.rt) <- df.rt$Peptide.Note
@@ -599,9 +915,9 @@ load_skyline_prop_eff_summarized_experiment <- function(df, coldata){
   
   # extract row data
   rowdata <- df %>%
-    select(Protein.Name, Peptide.Sequence, Peptide.Note, Precursor.Charge) %>%
+    select(Protein.Name, Peptide.Modified.Sequence.Monoisotopic.Masses, Peptide.Note, Precursor.Charge) %>%
     unique() %>%
-    group_by(Protein.Name, Peptide.Sequence, Peptide.Note, Precursor.Charge) %>%
+    group_by(Protein.Name, Peptide.Modified.Sequence.Monoisotopic.Masses, Peptide.Note, Precursor.Charge) %>%
     as.data.frame()
   rownames(rowdata) <- rowdata$Peptide.Note
   rowdata$Peptide.Note <- NULL
@@ -627,7 +943,7 @@ load_skyline_prop_eff_summarized_experiment <- function(df, coldata){
   return(se)
 }
 
-load_ratio_summarized_experiment <- function(ratio.ms1, ratio.ms2, obj.filter){
+load_summarized_experiment_ratio <- function(ratio.ms1, ratio.ms2, obj.filter){
   
   # extract assay data
   
@@ -965,7 +1281,7 @@ filter_missing_peptides <- function(obj, threshold = 0.5){
   
   if(length(filter) > 0){
     
-    print("PTMs filtered due to low R in specific replicates")
+    print("Peptidoforms filtered due to missing values")
     print(filter)
     
     obj.filter <- obj[!rownames(obj) %in% filter,]
@@ -976,14 +1292,15 @@ filter_missing_peptides <- function(obj, threshold = 0.5){
     return(obj.filter)
     
   } else {
-    print("No PTMs filtered due to low R")
+    print("No Peptidoforms filtered due to missing values")
     
     return(obj)
   }
 }
 
 # IMPROVEMENT: If more than 50% of cells are <= the empty wells
-filter_background_peptides <- function(obj, ratio = 1.5){
+# IMPROVEMENT: Do within each batch
+filter_background_peptides <- function(obj, ratio = 1.1){
   
   filter <- assay(obj, "MS1") %>% 
     rownames_to_column("id") %>%
@@ -1004,7 +1321,7 @@ filter_background_peptides <- function(obj, ratio = 1.5){
   
   if(nrow(filter) > 0){
     
-    print("PTMs filtered due to low R in specific replicates")
+    print("Peptidoforms filtered due to low signal intensity")
     print(filter$id)
     
     obj.filter <- obj[!rownames(obj) %in% filter$id,]
@@ -1015,13 +1332,53 @@ filter_background_peptides <- function(obj, ratio = 1.5){
     return(obj.filter)
     
   } else {
-    print("No PTMs filtered due to low R")
+    print("No Peptidoforms filtered due to low R")
     
     return(obj)
   }
 }
 
-filter_samples <- function(obj, assay, dev, filter_low = TRUE, filter_high = FALSE) {
+# Need to fix the case when needing to filter both low and high
+filter_prop_eff <- function(obj, prop.eff, dev = 2, filter_low = FALSE, filter_high = TRUE) {
+  
+  names(prop.eff) <- colnames(obj)
+  
+  # Calculate the overall median and median absolute deviation
+  overall_median <- median(prop.eff, na.rm = TRUE)
+  overall_mad <- mad(prop.eff, na.rm = TRUE)
+  
+  # Determine which samples to keep
+  if(filter_low){
+    samples_to_filter <- prop.eff < (overall_median - dev * overall_mad)
+  } else if(filter_high){
+    samples_to_filter <- prop.eff > (overall_median + dev * overall_mad)
+  } else if(filter_low & filter_low){
+    samples_to_keep <- prop.eff < (overall_median - dev * overall_mad) |
+      prop.eff > (overall_median + dev * overall_mad)
+  }
+  
+  samples_to_filter <- names(na.omit(samples_to_filter[samples_to_filter == TRUE]))
+  
+  if(length(samples_to_filter) > 0){
+    
+    print("Samples filtered due to exceeding MAD threshold")
+    print(samples_to_filter)
+    
+    obj.filter <- obj[,!(colnames(obj) %in% samples_to_filter)]
+    
+    write.csv(samples_to_filter, "filtered_prop_eff_samples.csv")
+    
+    return(obj.filter)
+    
+  } else {
+    print("No samples filtered due to exceeding MAD threshold")
+    
+    return(obj)
+  }
+  
+}
+
+filter_overall_intensity <- function(obj, assay, dev, filter_low = TRUE, filter_high = FALSE) {
   # Extract the assay data and set NA to 0
   df <- assay(obj, assay)
   df[is.na(df)] <- 0
@@ -1045,17 +1402,17 @@ filter_samples <- function(obj, assay, dev, filter_low = TRUE, filter_high = FAL
   
   if(length(samples_to_filter) > 0){
     
-    print("Samples filtered due to high MAD")
+    print("Samples filtered due to exceeding MAD threshold")
     print(names(samples_to_filter[samples_to_filter == TRUE]))
     
     obj.filter <- obj[,!samples_to_filter]
     
-    write.csv(names(samples_to_filter[samples_to_filter == TRUE]), "filtered_samples.csv")
+    write.csv(names(samples_to_filter[samples_to_filter == TRUE]), "filtered_inten_distrib_samples.csv")
     
     return(obj.filter)
     
   } else {
-    print("No samples filtered due to high MAD")
+    print("No samples filtered due to exceeding MAD threshold")
     
     return(obj)
   }
