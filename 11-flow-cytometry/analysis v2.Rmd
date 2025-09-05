@@ -1,0 +1,433 @@
+---
+title: "HeLa treated Treatment FACS Single-Cell Analysis"
+output: html_document
+date: "2025-08-10"
+editor_options: 
+  chunk_output_type: console
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Preparation
+
+## Libraries
+```{r}
+library(tidyr)
+library(dplyr)
+library(tibble)
+library(ggplot2)
+library(ggpubr)
+library(ComplexHeatmap)
+library(viridis)
+library(RColorBrewer)
+library(rstatix)
+
+library(SummarizedExperiment)
+```
+
+## Working Directory
+```{r}
+working.dir <- "~/EinsteinMed Dropbox/Ronald Cutler/Sidoli-lab/Projects/sc-hPTM/Experiments/250806 FACS"
+```
+
+## Functions
+```{r}
+setwd(working.dir)
+
+source("functions.R")
+```
+
+## Load Data
+```{r}
+setwd(paste(working.dir, "1-data", sep = "/"))
+
+# load conditions
+control <- read_flowjo_csv_to_SE("control_comp.csv")
+
+treated <- read_flowjo_csv_to_SE("nabut_comp.csv")
+
+# combine into single se object
+control$condition <- "Control"
+treated$condition <- "Treated"
+
+## ensure assay order matches, then align features
+stopifnot(setequal(assayNames(control), assayNames(treated)))
+assays(treated) <- assays(treated)[assayNames(control)]                  # reorder assays to match control
+common <- intersect(rownames(control), rownames(treated))            # shared channels/features
+controla <- control[common, , drop = FALSE]
+treateda <- treated[common, , drop = FALSE]
+
+## combine by columns (adds cells)
+se <- SummarizedExperiment::cbind(controla, treateda)
+colnames(se) <- make.unique(colnames(se))   # tidy duplicates if any
+
+# annotate antibodies
+map <- c("Comp-Alexa Fluor 488-A"="H3K14ac", 
+         "Comp-Alexa Fluor 555-A"="H3K23ac", 
+         "Comp-APC-A"="H3",
+         "Comp-FxCycle Violet-A"="Cell.Cycle",
+         "Comp-FVS780-A"="Viability")
+
+# keep original channel IDs, add antibody field
+se <- annotate_antibodies(se, map)
+```
+
+## Save
+```{r}
+setwd(paste(working.dir, "1-data", sep = "/"))
+
+saveRDS(se, "se.rds")
+```
+
+# Quality control
+
+## Plot initial distributions
+```{r}
+dir.create(paste(working.dir, "2-quality-control", sep = "/"), showWarnings = FALSE)
+setwd(paste(working.dir, "2-quality-control", sep = "/"))
+
+pdf("quality-control.pdf",
+    width = 10,
+    height = 10)
+(qc <- qc_flow_se_suite(se, assay_name = "exprs",
+                       condition_col = "condition",
+                       transform = "arcsinh", cofactor = 150,
+                       label_field = "antibody"))
+dev.off()
+```
+
+## Singlet Filter
+  - gate singlets using Area~Height band method
+```{r}
+setwd(paste(working.dir, "2-quality-control", sep = "/"))
+
+res <- gate_singlets(
+    se,
+    method = "auto",        # AH = Area~Height band; AW = Area~Width one-sided
+    assay_name = NULL,
+    condition_col = "condition",
+    label_field = "antibody",
+    transform = "arcsinh",
+    cofactor = 150,
+    k = 3,                               # band width in MAD units
+    per_condition = FALSE,
+    max_points_per_condition = 50000,    # for plotting only
+    seed = 1
+)
+
+pdf("singlets-filter.pdf",
+    width = 5,
+    height = 5)
+res$plots
+dev.off()
+
+se.singlets <- res$se_filtered
+```
+
+## Debris Filter
+  - Filter out debris based on FSC and SSC
+```{r}
+setwd(paste(working.dir, "2-quality-control", sep = "/"))
+
+res <- gate_debris_fsc_ssc(
+  se.singlets,
+  per_condition = FALSE,                 # global
+  floor_mode = "quantile", floor_q = 0.06,  # 2% floors (tune 0.02–0.05)
+  keep_fraction = 0.98,                  # ellipse for plotting/context
+  keep_rule = "floors_or_ellipse",       # UNION: above floors OR inside ellipse
+  transform = "arcsinh", cofactor = 150
+)
+
+pdf("debris-filter.pdf",
+    width = 5,
+    height = 5)
+res$plots
+dev.off()
+
+se.singlet.debris <- res$se_filtered
+```
+
+## Viability filter
+ - Keep cells within 3MAD of combined viability signal
+```{r}
+setwd(paste(working.dir, "2-quality-control", sep = "/"))
+
+# calculate MAD window 
+res <- filter_cells_by_mad_window(se.singlet.debris, channel = "Viability", transform = "arcsinh", k = 4)
+print(res$stats_overall)  # shows n_total, n_keep, pct_keep
+
+# plot
+pdf("viability-filter.pdf",
+    width = 5,
+    height = 5)
+print(res$plot)
+dev.off()
+
+# apply filter
+se.singlet.debris.viab <- res$se_filtered
+```
+
+## Outlier Filters
+
+### H3
+```{r}
+setwd(paste(working.dir, "2-quality-control", sep = "/"))
+
+# calculate MAD window 
+res <- filter_cells_by_mad_window(se.singlet.debris.viab, channel = "H3", transform = "arcsinh", k = 5)
+print(res$stats_overall)  # shows n_total, n_keep, pct_keep
+
+# plot
+pdf("h3-filter.pdf",
+    width = 5,
+    height = 5)
+print(res$plot)
+dev.off()
+
+# apply filter
+se.singlet.debris.viab.outlier <- res$se_filtered
+```
+
+### H3K14
+```{r}
+setwd(paste(working.dir, "2-quality-control", sep = "/"))
+
+# calculate MAD window 
+res <- filter_cells_by_mad_window(se.singlet.debris.viab.outlier, channel = "H3K14", transform = "arcsinh", k = 7)
+print(res$stats_overall)  # shows n_total, n_keep, pct_keep
+
+# plot
+pdf("h3k14-filter.pdf",
+    width = 5,
+    height = 5)
+print(res$plot)
+dev.off()
+
+# apply filter
+se.singlet.debris.viab.outlier <- res$se_filtered
+```
+
+### H3K23
+```{r}
+setwd(paste(working.dir, "2-quality-control", sep = "/"))
+
+# calculate MAD window 
+res <- filter_cells_by_mad_window(se.singlet.debris.viab.outlier, channel = "H3K23", transform = "arcsinh", k = 5)
+print(res$stats_overall)  # shows n_total, n_keep, pct_keep
+
+# plot
+pdf("h3k23-filter.pdf",
+    width = 5,
+    height = 5)
+print(res$plot)
+dev.off()
+
+# apply filter
+se.singlet.debris.viab.outlier <- res$se_filtered
+```
+
+### Cell Cycle
+```{r}
+setwd(paste(working.dir, "2-quality-control", sep = "/"))
+
+# calculate MAD window 
+res <- filter_cells_by_mad_window(se.singlet.debris.viab.outlier, channel = "Cell.Cycle", transform = "arcsinh", k = 5)
+print(res$stats_overall)  # shows n_total, n_keep, pct_keep
+
+# plot
+pdf("cell.cycle-filter.pdf",
+    width = 5,
+    height = 5)
+print(res$plot)
+dev.off()
+
+# apply filter
+se.singlet.debris.viab.outlier <- res$se_filtered
+```
+
+## Plot filtered distributions
+```{r}
+setwd(paste(working.dir, "2-quality-control", sep = "/"))
+
+pdf("quality-control-filtered.pdf",
+    width = 10,
+    height = 10)
+(qc <- qc_flow_se_suite(se.singlet.debris.viab.outlier, assay_name = "exprs",
+                       condition_col = "condition",
+                       transform = "arcsinh", cofactor = 150,
+                       label_field = "antibody"))
+dev.off()
+```
+
+## Save
+```{r}
+setwd(paste(working.dir, "2-quality-control", sep = "/"))
+
+saveRDS(se.singlet.debris.viab.outlier, "se.singlet.debris.viab.outlier.rds")
+```
+
+# Stratify cells by cell cycle
+  - Classify cells into cell cycle phases based on DNA content
+  - Peaks from each condition are aligned before classification to account for global shifts in signal
+```{r}
+dir.create(paste(working.dir, "3-cell-cycle", sep = "/"), showWarnings = FALSE)
+setwd(paste(working.dir, "3-cell-cycle", sep = "/"))
+
+# classify cell cycle phases based on DNA content
+res <- classify_cell_cycle_by_dna(
+  se.singlet.debris.viab.outlier, channel = "Cell.Cycle",
+  window_scope = "reference", reference_level = "Control",
+  align_peaks = TRUE, align_scope = "reference",
+  k = 1.5, min_s_frac = 0.1, transform = "none",
+  g1_left_pad_mad = 3
+)
+
+table(res$se_with_phase$cell_cycle, res$se_with_phase$condition)
+
+# plot cell cycle classification
+pdf("cell-cycle-classification.pdf",
+    width = 8,
+    height = 5)
+print(res$plot)
+dev.off()
+
+se.singlet.debris.viab.outlier.cc <- res$se_with_phase
+```
+
+## Save
+```{r}
+setwd(paste(working.dir, "3-cell-cycle", sep = "/"))
+
+saveRDS(se.singlet.debris.viab.outlier.cc, "se.singlet.debris.viab.outlier.cc.rds")
+```
+
+# Differential abundance
+```{r}
+dir.create(paste(working.dir, "4-differential-abundance", sep = "/"), showWarnings = FALSE)
+setwd(paste(working.dir, "4-differential-abundance", sep = "/"))
+
+res <- compare_ptm_by_condition_phase(
+  se.singlet.debris.viab.outlier.cc,
+  features = c("H3K14ac","H3K23ac", "H3"),
+  phase_col = "cell_cycle",
+  assay_name = "exprs",
+  transform_plot = "none",            # nicer for ratios
+  sample_per_group = Inf,
+  add_stat_labels = FALSE,
+  drop_empty_facets = TRUE,
+  facet_label_size = 15
+)
+
+pdf("unnomralized-differential-abundance.pdf",
+    width = 7,
+    height = 7)
+res$plot
+dev.off()
+
+write.csv(res$stats, "unnormalized-differential-abundance-stats.csv", row.names = FALSE)
+```
+
+# PTM-PTM Covariation
+
+### All cell cycle phases
+```{r}
+dir.create(paste(working.dir, "5-covariation", sep = "/"), showWarnings = FALSE)
+setwd(paste(working.dir, "5-covariation", sep = "/"))
+
+pdf("ptm-covariation-unnormalized-all-cellCycle.pdf",
+    width = 7,
+    height = 5)
+res <- plot_ptm_covariation(
+  se.singlet.debris.viab.outlier.cc.norm, 
+  x_feature = "H3K14ac", 
+  y_feature = "H3K23ac",
+  assay_name = "exprs",
+  transform = "none",
+  sample_per_condition = Inf,
+  outlier = "none", 
+  outlier_q = c(0.01, 0.99),
+  compute_stats_on = "filtered", 
+  plot_filtered_only = TRUE,
+  axis_label_prefix = '',
+  title = "All cell cycle phases"
+)
+res$plot
+dev.off()
+```
+
+### G0/G1 phase only
+```{r}
+setwd(paste(working.dir, "5-covariation", sep = "/"))
+
+pdf("ptm-covariation-unnormalized-G0.G1-cellCycle.pdf",
+    width = 7,
+    height = 5)
+res <- plot_ptm_covariation(
+  se.singlet.debris.viab.outlier.cc.norm[,se.singlet.debris.viab.outlier.cc.norm$cell_cycle == "G0/G1"],
+  x_feature = "H3K14ac", 
+  y_feature = "H3K23ac",
+  assay_name = "exprs",
+  transform = "none",
+  sample_per_condition = Inf,
+  outlier = "none", 
+  outlier_q = c(0.01, 0.99),
+  compute_stats_on = "filtered", 
+  plot_filtered_only = TRUE,
+  axis_label_prefix = '',
+  title = "G0/G1 phase"
+)
+res$plot
+dev.off()
+```
+
+### S phase only
+```{r}
+setwd(paste(working.dir, "5-covariation", sep = "/"))
+
+pdf("ptm-covariation-unnormalized-S-cellCycle.pdf",
+    width = 7,
+    height = 5)
+res <- plot_ptm_covariation(
+  se.singlet.debris.viab.outlier.cc.norm[,se.singlet.debris.viab.outlier.cc.norm$cell_cycle == "S"],
+  x_feature = "H3K14ac", 
+  y_feature = "H3K23ac",
+  assay_name = "exprs",
+  transform = "none",
+  sample_per_condition = Inf,
+  outlier = "none", 
+  outlier_q = c(0.01, 0.99),
+  compute_stats_on = "filtered", 
+  plot_filtered_only = TRUE,
+  axis_label_prefix = '',
+  title = "S phase"
+)
+res$plot
+dev.off()
+```
+
+### G2/M phase only
+```{r}
+setwd(paste(working.dir, "5-covariation", sep = "/"))
+
+pdf("ptm-covariation-unnormalized-G2.M-cellCycle.pdf",
+    width = 7,
+    height = 5)
+res <- plot_ptm_covariation(
+  se.singlet.debris.viab.outlier.cc.norm[,se.singlet.debris.viab.outlier.cc.norm$cell_cycle == "G2/M"],
+  x_feature = "H3K14ac", 
+  y_feature = "H3K23ac",
+  assay_name = "exprs",
+  transform = "none",
+  sample_per_condition = Inf,
+  outlier = "none", 
+  outlier_q = c(0.01, 0.99),
+  compute_stats_on = "filtered", 
+  plot_filtered_only = TRUE,
+  axis_label_prefix = '',
+  title = "G2/M phase"
+)
+res$plot
+dev.off()
+```

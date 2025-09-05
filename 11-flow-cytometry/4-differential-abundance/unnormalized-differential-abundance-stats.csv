@@ -1,0 +1,13 @@
+"feature","phase","test","p","p_adj","n1","n2","group1","group2","effect"
+"H3","ALL","wilcox",0,0,59104,28922,"Control","Treated",-2.54576711040321
+"H3K14ac","ALL","wilcox",0,0,59104,28922,"Control","Treated",-2.6030907991116
+"H3K23ac","ALL","wilcox",0,0,59104,28922,"Control","Treated",-3.02710394840994
+"H3","G0/G1","wilcox",0,0,46801,24808,"Control","Treated",-2.41336154601249
+"H3K14ac","G0/G1","wilcox",0,0,46801,24808,"Control","Treated",-2.50288244012514
+"H3K23ac","G0/G1","wilcox",0,0,46801,24808,"Control","Treated",-2.87407797601268
+"H3","G2/M","wilcox",8.91287970219913e-303,8.91287970219913e-303,5494,2134,"Control","Treated",-3.1227281597817
+"H3K14ac","G2/M","wilcox",0,0,5494,2134,"Control","Treated",-3.21741209375892
+"H3K23ac","G2/M","wilcox",0,0,5494,2134,"Control","Treated",-3.53930350533205
+"H3","S","wilcox",2.55489814695614e-253,2.55489814695614e-253,6809,1980,"Control","Treated",-3.94055416850247
+"H3K14ac","S","wilcox",0,0,6809,1980,"Control","Treated",-4.08085940918956
+"H3K23ac","S","wilcox",0,0,6809,1980,"Control","Treated",-4.41888550655624
